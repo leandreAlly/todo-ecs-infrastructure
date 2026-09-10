@@ -194,7 +194,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/8ea2c5c503caacf90a21d8b9a9c43c24.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/a61d20b727c0e057c99305cc34c48d6a.template
       Parameters:
         ProjectName:
           Ref: ProjectName
