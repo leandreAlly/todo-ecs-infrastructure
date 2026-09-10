@@ -248,7 +248,7 @@ Resources:
     Condition: HasImage
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/d910f7e98e2d06e0586e1d8214b45813.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/295acdbabede3203ea6a6dbaf637d58d.template
       Parameters:
         ProjectName:
           Ref: ProjectName
