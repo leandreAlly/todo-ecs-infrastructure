@@ -6,7 +6,7 @@ parameters:
   ApplicationRepo: todo-ecs-app
   GitHubOwnerId: '78492995'
   RepositoryName: todo-ecs-app
-  ImageTag: ''
+  ImageTag: '625cb5c'
 tags:
   project: todo-ecs
   managed-by: cloudformation-gitsync
