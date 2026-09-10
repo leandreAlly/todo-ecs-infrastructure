@@ -59,10 +59,47 @@ URL per account and the sibling labs already created it).
    AWS_REGION=eu-north-1 ./scripts/bootstrap-gitsync.sh
    ```
 
-2. **Create the `todo-ecs-bootstrap` Git sync configuration** in the
-   CloudFormation console, pointed at this repository, `main`, and
-   `deployment/bootstrap.yaml`, using the role from step 1. It creates the
-   template bucket and the packaging role.
+2. **Create the `todo-ecs-bootstrap` stack, then its Git sync configuration.**
+
+   Order matters, and this is the one genuinely surprising part. A sync
+   configuration created through the API only ever issues *update* change
+   sets: on the first push it calls `CreateChangeSet` against a stack that
+   does not exist yet and fails with `Stack [todo-ecs-bootstrap] does not
+   exist`. Nothing surfaces in `get-sync-blocker-summary` — the failure is
+   only visible in CloudTrail. The console's "Create stack from Git" flow
+   creates the stack for you; the API does not. So create the stack once with
+   the same name, parameters and tags as the deployment file, and let Git sync
+   own it from then on:
+
+   ```sh
+   aws cloudformation create-stack \
+     --stack-name todo-ecs-bootstrap \
+     --template-body file://templates/bootstrap.yaml \
+     --role-arn "$(aws cloudformation describe-stacks --stack-name todo-ecs-gitsync-role \
+        --query 'Stacks[0].Outputs[?OutputKey==`GitSyncRoleArn`].OutputValue' --output text)" \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --parameters ParameterKey=ProjectName,ParameterValue=todo-ecs \
+                  ParameterKey=GitHubOwner,ParameterValue=leandreAlly \
+                  ParameterKey=InfrastructureRepo,ParameterValue=todo-ecs-infrastructure \
+                  ParameterKey=GitHubOwnerId,ParameterValue=78492995 \
+                  ParameterKey=CreateOidcProvider,ParameterValue=false \
+                  ParameterKey=TemplateRetentionDays,ParameterValue=30 \
+     --tags Key=project,Value=todo-ecs Key=layer,Value=bootstrap \
+            Key=managed-by,Value=cloudformation-gitsync
+
+   aws codeconnections create-repository-link \
+     --connection-arn <your GitHub connection ARN> \
+     --owner-id leandreAlly --repository-name todo-ecs-infrastructure
+
+   aws codeconnections create-sync-configuration \
+     --branch main --config-file deployment/bootstrap.yaml \
+     --repository-link-id <id from the previous call> \
+     --resource-name todo-ecs-bootstrap \
+     --role-arn <the Git sync role> --sync-type CFN_STACK_SYNC
+   ```
+
+   Git sync also only reacts to a push that actually changes a file. An empty
+   commit will not reconcile anything.
 
 3. **Set this repository's Actions variables** from the bootstrap outputs:
    `AWS_REGION`, `TEMPLATE_BUCKET`, `AWS_PACKAGE_ROLE_ARN`. The packaging
@@ -72,8 +109,10 @@ URL per account and the sibling labs already created it).
    `aws cloudformation package`, and commits `packaged/main.yaml`. Git sync
    watches that file.
 
-5. **Create the `todo-ecs` Git sync configuration**, pointed at
-   `deployment/main.yaml`. With `ImageTag` empty it creates the network,
+5. **Create the `todo-ecs` stack and its sync configuration**, the same way as
+   step 2 but pointed at `deployment/main.yaml`, and with
+   `--capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND`.
+   With `ImageTag` empty it creates the network,
    registry and data modules only — an ECS service cannot start before an
    image exists to pull. The data tier takes 25–40 minutes because of the
    Multi-AZ instance.
