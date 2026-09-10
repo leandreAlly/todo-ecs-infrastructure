@@ -1,0 +1,274 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  To-Do ECS - CloudFormation Git sync execution role.
+  Git sync needs an IAM role to assume before it can create anything, so this
+  one stack cannot be deployed by Git sync itself. Deploy it once by hand with
+  scripts/bootstrap-gitsync.sh, then point every Git sync configuration at the
+  role it exports. Permissions are split across three managed policies purely
+  to stay under the 6144-character limit on a single policy document, and every
+  service action is pinned to one region and, where the API supports it, to
+  resources whose name starts with the project prefix.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: todo-ecs
+    AllowedPattern: '[a-z][a-z0-9-]*'
+
+Resources:
+  CoreResourcesPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectName}-execution-core'
+      Description: VPC, buckets, roles and nested stacks for this project
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: NetworkResources
+            Effect: Allow
+            Action:
+              - ec2:CreateVpc
+              - ec2:DeleteVpc
+              - ec2:ModifyVpcAttribute
+              - ec2:CreateSubnet
+              - ec2:DeleteSubnet
+              - ec2:ModifySubnetAttribute
+              - ec2:CreateInternetGateway
+              - ec2:DeleteInternetGateway
+              - ec2:AttachInternetGateway
+              - ec2:DetachInternetGateway
+              - ec2:CreateRouteTable
+              - ec2:DeleteRouteTable
+              - ec2:AssociateRouteTable
+              - ec2:DisassociateRouteTable
+              - ec2:CreateRoute
+              - ec2:DeleteRoute
+              - ec2:CreateSecurityGroup
+              - ec2:DeleteSecurityGroup
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:RevokeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:CreateVpcEndpoint
+              - ec2:DeleteVpcEndpoints
+              - ec2:ModifyVpcEndpoint
+              - ec2:CreateTags
+              - ec2:DeleteTags
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: !Ref AWS::Region
+          - Sid: NetworkReadOnly
+            Effect: Allow
+            Action:
+              - ec2:Describe*
+            Resource: '*'
+          - Sid: ProjectBuckets
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:DeleteBucket
+              - s3:ListBucket
+              - s3:GetBucketLocation
+              - s3:PutBucketVersioning
+              - s3:GetBucketVersioning
+              - s3:PutEncryptionConfiguration
+              - s3:GetEncryptionConfiguration
+              - s3:PutBucketPublicAccessBlock
+              - s3:GetBucketPublicAccessBlock
+              - s3:PutLifecycleConfiguration
+              - s3:GetLifecycleConfiguration
+              - s3:PutBucketTagging
+              - s3:GetBucketTagging
+              - s3:PutBucketPolicy
+              - s3:GetBucketPolicy
+              - s3:DeleteBucketPolicy
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::${ProjectName}-*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${ProjectName}-*/*'
+          - Sid: ProjectRoles
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:TagRole
+              - iam:UntagRole
+              - iam:PutRolePolicy
+              - iam:GetRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:ListRolePolicies
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:ListAttachedRolePolicies
+              - iam:UpdateAssumeRolePolicy
+              - iam:UpdateRoleDescription
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
+          - Sid: OidcProvider
+            Effect: Allow
+            Action:
+              - iam:GetOpenIDConnectProvider
+              - iam:CreateOpenIDConnectProvider
+              - iam:DeleteOpenIDConnectProvider
+              - iam:TagOpenIDConnectProvider
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/*'
+          - Sid: NestedStacks
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResource
+              - cloudformation:DescribeStackResources
+              - cloudformation:ListStackResources
+              - cloudformation:GetTemplate
+              - cloudformation:GetTemplateSummary
+            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}-*/*'
+
+  PlatformServicesPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectName}-execution-services'
+      Description: ECS, load balancing, logging, registry and the delivery pipeline
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PlatformServices
+            Effect: Allow
+            Action:
+              - ecs:CreateCluster
+              - ecs:DeleteCluster
+              - ecs:DescribeClusters
+              - ecs:UpdateCluster
+              - ecs:RegisterTaskDefinition
+              - ecs:DeregisterTaskDefinition
+              - ecs:DescribeTaskDefinition
+              - ecs:CreateService
+              - ecs:UpdateService
+              - ecs:DeleteService
+              - ecs:DescribeServices
+              - ecs:TagResource
+              - ecs:UntagResource
+              - ecs:ListTagsForResource
+              - elasticloadbalancing:*
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:DescribeLogGroups
+              - logs:PutRetentionPolicy
+              - logs:TagResource
+              - logs:ListTagsForResource
+              - application-autoscaling:*
+              - codedeploy:*
+              - codepipeline:*
+              - events:*
+              - ecr:*
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: !Ref AWS::Region
+          - Sid: PassProjectRoles
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
+            Condition:
+              StringEquals:
+                iam:PassedToService:
+                  - ecs-tasks.amazonaws.com
+                  - codedeploy.amazonaws.com
+                  - codepipeline.amazonaws.com
+                  - events.amazonaws.com
+                  - rds.amazonaws.com
+          - Sid: ServiceLinkedRoles
+            Effect: Allow
+            Action: iam:CreateServiceLinkedRole
+            Resource: '*'
+            Condition:
+              StringEquals:
+                iam:AWSServiceName:
+                  - ecs.amazonaws.com
+                  - ecs.application-autoscaling.amazonaws.com
+                  - rds.amazonaws.com
+                  - elasticache.amazonaws.com
+
+  DataServicesPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectName}-execution-data'
+      Description: RDS, RDS Proxy, ElastiCache and the generated database secret
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DatabaseAndCache
+            Effect: Allow
+            Action:
+              - rds:*
+              - elasticache:*
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: !Ref AWS::Region
+          - Sid: DatabaseSecret
+            Effect: Allow
+            Action:
+              - secretsmanager:CreateSecret
+              - secretsmanager:DeleteSecret
+              - secretsmanager:DescribeSecret
+              - secretsmanager:GetSecretValue
+              - secretsmanager:PutSecretValue
+              - secretsmanager:UpdateSecret
+              - secretsmanager:TagResource
+              - secretsmanager:UntagResource
+              - secretsmanager:RotateSecret
+            Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}-*'
+          - Sid: GenerateSecretMaterial
+            Effect: Allow
+            Action:
+              - secretsmanager:GetRandomPassword
+              - secretsmanager:ListSecrets
+            Resource: '*'
+          - Sid: DefaultServiceKeys
+            Effect: Allow
+            Action:
+              - kms:DescribeKey
+              - kms:ListAliases
+              - kms:CreateGrant
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: !Ref AWS::Region
+
+  GitSyncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gitsync-role'
+      Description: Assumed by CloudFormation when Git sync deploys this project
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - !Ref CoreResourcesPolicy
+        - !Ref PlatformServicesPolicy
+        - !Ref DataServicesPolicy
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: layer
+          Value: bootstrap
+
+Outputs:
+  GitSyncRoleArn:
+    Description: Select this role when creating each Git sync configuration
+    Value: !GetAtt GitSyncRole.Arn
+  GitSyncRoleName:
+    Value: !Ref GitSyncRole

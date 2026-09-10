@@ -1,0 +1,11 @@
+template-file-path: templates/bootstrap.yaml
+parameters:
+  ProjectName: todo-ecs
+  GitHubOwner: leandreAlly
+  InfrastructureRepo: todo-ecs-infrastructure
+  GitHubOwnerId: '78492995'
+  CreateOidcProvider: 'false'
+tags:
+  project: todo-ecs
+  layer: bootstrap
+  managed-by: cloudformation-gitsync

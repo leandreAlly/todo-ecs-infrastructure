@@ -1,0 +1,12 @@
+template-file-path: packaged/main.yaml
+parameters:
+  ProjectName: todo-ecs
+  S3PrefixListId: pl-c3aa4faa
+  GitHubOwner: leandreAlly
+  ApplicationRepo: todo-ecs-app
+  GitHubOwnerId: '78492995'
+  RepositoryName: todo-ecs-app
+  ImageTag: ''
+tags:
+  project: todo-ecs
+  managed-by: cloudformation-gitsync
