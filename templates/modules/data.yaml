@@ -93,9 +93,18 @@ Resources:
   # GenerateSecretString is what keeps the password out of the template, the
   # parameters and the Git sync deployment file. Every character RDS rejects in
   # a master password is excluded explicitly.
+  #
+  # The name is derived from this nested stack rather than fixed, which buys
+  # two things. It starts with the project prefix, so the deployment role's
+  # policy can stay scoped to secret:todo-ecs-* - left unnamed, CloudFormation
+  # generates a name from the logical ID alone and the create is denied. And it
+  # carries the stack's own random suffix, so tearing the lab down and building
+  # it again does not collide with the old secret, which Secrets Manager keeps
+  # for a recovery window of up to 30 days after deletion.
   DatabaseSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
+      Name: !Sub '${AWS::StackName}-db-credentials'
       Description: !Sub 'Master credentials for the ${ProjectName} PostgreSQL instance'
       GenerateSecretString:
         SecretStringTemplate: !Sub '{"username":"${DbMasterUsername}"}'
