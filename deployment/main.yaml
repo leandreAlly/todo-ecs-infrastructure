@@ -10,4 +10,5 @@ parameters:
 tags:
   project: todo-ecs
   lab: advanced-ecs
+  owner: leandre
   managed-by: cloudformation-gitsync
