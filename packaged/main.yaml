@@ -1,0 +1,497 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "To-Do ECS - root stack. Nests every module for this project. Child templates\
+  \ are referenced by local path here; \"aws cloudformation package\" rewrites each\
+  \ TemplateURL to a content-hashed S3 object, so a module only updates when its own\
+  \ template changes. Deploy this stack, never its children.\n"
+Parameters:
+  ProjectName:
+    Type: String
+    Default: todo-ecs
+    AllowedPattern: '[a-z][a-z0-9-]*'
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+  PublicSubnet1Cidr:
+    Type: String
+    Default: 10.0.0.0/24
+  PublicSubnet2Cidr:
+    Type: String
+    Default: 10.0.1.0/24
+  AppSubnet1Cidr:
+    Type: String
+    Default: 10.0.10.0/24
+  AppSubnet2Cidr:
+    Type: String
+    Default: 10.0.11.0/24
+  DataSubnet1Cidr:
+    Type: String
+    Default: 10.0.20.0/24
+  DataSubnet2Cidr:
+    Type: String
+    Default: 10.0.21.0/24
+  CacheSubnet1Cidr:
+    Type: String
+    Default: 10.0.30.0/24
+  CacheSubnet2Cidr:
+    Type: String
+    Default: 10.0.31.0/24
+  ContainerPort:
+    Type: Number
+    Default: 8080
+  TestListenerPort:
+    Type: Number
+    Default: 9000
+  TestListenerCidr:
+    Type: String
+    Default: 0.0.0.0/0
+  DatabasePort:
+    Type: Number
+    Default: 5432
+  CachePort:
+    Type: Number
+    Default: 6379
+  S3PrefixListId:
+    Type: String
+    AllowedPattern: ^pl-[0-9a-f]+$
+  GitHubOwner:
+    Type: String
+    Default: leandreAlly
+  ApplicationRepo:
+    Type: String
+    Default: todo-ecs-app
+  GitHubOwnerId:
+    Type: String
+    Default: '78492995'
+    AllowedPattern: '[0-9]+'
+    Description: "Numeric GitHub owner ID. Repositories created after 2026-07-15 emit\
+      \ an immutable OIDC subject claim of the form repo:owner@ownerid/repo@repoid:ref:...\
+      \ instead of repo:owner/repo:ref:...\n"
+  RepositoryName:
+    Type: String
+    Default: todo-ecs-app
+  ImageTag:
+    Type: String
+    Default: ''
+    Description: "Image tag to run. Leave empty on the first deploy - the platform\
+      \ module is only created once an image exists in the registry, because an ECS\
+      \ service cannot start without a real image to pull. The data module is deliberately\
+      \ outside this condition so the database and cache are already warm by the time\
+      \ the first image lands.\n"
+  DbName:
+    Type: String
+    Default: todo
+  DbEngineVersion:
+    Type: String
+    Default: '17.6'
+  DbInstanceClass:
+    Type: String
+    Default: db.t3.micro
+  DbAllocatedStorage:
+    Type: Number
+    Default: 20
+  DbMultiAZ:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+    - 'true'
+    - 'false'
+  DbBackupRetentionDays:
+    Type: Number
+    Default: 1
+  CacheNodeType:
+    Type: String
+    Default: cache.t4g.micro
+  CacheEngineVersion:
+    Type: String
+    Default: '7.1'
+  CacheClusterCount:
+    Type: Number
+    Default: 2
+    MinValue: 2
+  TaskCpu:
+    Type: String
+    Default: '512'
+  TaskMemory:
+    Type: String
+    Default: '1024'
+  MinCapacity:
+    Type: Number
+    Default: 1
+  MaxCapacity:
+    Type: Number
+    Default: 4
+  CpuTargetUtilization:
+    Type: Number
+    Default: 60
+Conditions:
+  HasImage:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: ImageTag
+      - ''
+Resources:
+  Network:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/95c5d99b9524509823d0eab086e26d04.template
+      Parameters:
+        ProjectName:
+          Ref: ProjectName
+        VpcCidr:
+          Ref: VpcCidr
+        PublicSubnet1Cidr:
+          Ref: PublicSubnet1Cidr
+        PublicSubnet2Cidr:
+          Ref: PublicSubnet2Cidr
+        AppSubnet1Cidr:
+          Ref: AppSubnet1Cidr
+        AppSubnet2Cidr:
+          Ref: AppSubnet2Cidr
+        DataSubnet1Cidr:
+          Ref: DataSubnet1Cidr
+        DataSubnet2Cidr:
+          Ref: DataSubnet2Cidr
+        CacheSubnet1Cidr:
+          Ref: CacheSubnet1Cidr
+        CacheSubnet2Cidr:
+          Ref: CacheSubnet2Cidr
+        ContainerPort:
+          Ref: ContainerPort
+        TestListenerPort:
+          Ref: TestListenerPort
+        TestListenerCidr:
+          Ref: TestListenerCidr
+        DatabasePort:
+          Ref: DatabasePort
+        CachePort:
+          Ref: CachePort
+        S3PrefixListId:
+          Ref: S3PrefixListId
+      Tags:
+      - Key: module
+        Value: network
+  Registry:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/a671ac7125e39ec0999f81a6bac2ae0f.template
+      Parameters:
+        ProjectName:
+          Ref: ProjectName
+        RepositoryName:
+          Ref: RepositoryName
+        GitHubOwner:
+          Ref: GitHubOwner
+        GitHubOwnerId:
+          Ref: GitHubOwnerId
+        GitHubRepo:
+          Ref: ApplicationRepo
+      Tags:
+      - Key: module
+        Value: registry
+  Data:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/8ea2c5c503caacf90a21d8b9a9c43c24.template
+      Parameters:
+        ProjectName:
+          Ref: ProjectName
+        DataSubnetIds:
+          Fn::GetAtt:
+          - Network
+          - Outputs.DataSubnetIds
+        CacheSubnetIds:
+          Fn::GetAtt:
+          - Network
+          - Outputs.CacheSubnetIds
+        DatabaseSecurityGroupId:
+          Fn::GetAtt:
+          - Network
+          - Outputs.DatabaseSecurityGroupId
+        ProxySecurityGroupId:
+          Fn::GetAtt:
+          - Network
+          - Outputs.ProxySecurityGroupId
+        CacheSecurityGroupId:
+          Fn::GetAtt:
+          - Network
+          - Outputs.CacheSecurityGroupId
+        DbName:
+          Ref: DbName
+        DbPort:
+          Ref: DatabasePort
+        DbEngineVersion:
+          Ref: DbEngineVersion
+        DbInstanceClass:
+          Ref: DbInstanceClass
+        DbAllocatedStorage:
+          Ref: DbAllocatedStorage
+        DbMultiAZ:
+          Ref: DbMultiAZ
+        DbBackupRetentionDays:
+          Ref: DbBackupRetentionDays
+        CacheNodeType:
+          Ref: CacheNodeType
+        CacheEngineVersion:
+          Ref: CacheEngineVersion
+        CacheClusterCount:
+          Ref: CacheClusterCount
+        CachePort:
+          Ref: CachePort
+      Tags:
+      - Key: module
+        Value: data
+  Platform:
+    Type: AWS::CloudFormation::Stack
+    Condition: HasImage
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/d910f7e98e2d06e0586e1d8214b45813.template
+      Parameters:
+        ProjectName:
+          Ref: ProjectName
+        VpcId:
+          Fn::GetAtt:
+          - Network
+          - Outputs.VpcId
+        PublicSubnetIds:
+          Fn::GetAtt:
+          - Network
+          - Outputs.PublicSubnetIds
+        AppSubnetIds:
+          Fn::GetAtt:
+          - Network
+          - Outputs.AppSubnetIds
+        AlbSecurityGroupId:
+          Fn::GetAtt:
+          - Network
+          - Outputs.AlbSecurityGroupId
+        TaskSecurityGroupId:
+          Fn::GetAtt:
+          - Network
+          - Outputs.TaskSecurityGroupId
+        ContainerImage:
+          Fn::Sub: ${Registry.Outputs.RepositoryUri}:${ImageTag}
+        ContainerPort:
+          Ref: ContainerPort
+        TestListenerPort:
+          Ref: TestListenerPort
+        DatabaseUrl:
+          Fn::GetAtt:
+          - Data
+          - Outputs.DatabaseUrl
+        DatabaseSecretArn:
+          Fn::GetAtt:
+          - Data
+          - Outputs.DatabaseSecretArn
+        CacheHost:
+          Fn::GetAtt:
+          - Data
+          - Outputs.CachePrimaryEndpoint
+        CachePort:
+          Fn::GetAtt:
+          - Data
+          - Outputs.CachePort
+        CacheTls:
+          Fn::GetAtt:
+          - Data
+          - Outputs.CacheTransitEncryption
+        TaskCpu:
+          Ref: TaskCpu
+        TaskMemory:
+          Ref: TaskMemory
+        MinCapacity:
+          Ref: MinCapacity
+        MaxCapacity:
+          Ref: MaxCapacity
+        CpuTargetUtilization:
+          Ref: CpuTargetUtilization
+      Tags:
+      - Key: module
+        Value: platform
+  Delivery:
+    Type: AWS::CloudFormation::Stack
+    Condition: HasImage
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/d4d69919fbb1e8f2a14870fb2e187dcb.template
+      Parameters:
+        ProjectName:
+          Ref: ProjectName
+        EcrRepositoryName:
+          Fn::GetAtt:
+          - Registry
+          - Outputs.RepositoryName
+        ClusterName:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.ClusterName
+        ServiceName:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.ServiceName
+        ProductionListenerArn:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.ProductionListenerArn
+        TestListenerArn:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.TestListenerArn
+        BlueTargetGroupName:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.BlueTargetGroupName
+        GreenTargetGroupName:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.GreenTargetGroupName
+        ApplicationRoleArn:
+          Fn::GetAtt:
+          - Registry
+          - Outputs.GitHubActionsRoleArn
+      Tags:
+      - Key: module
+        Value: delivery
+Outputs:
+  ApplicationUrl:
+    Condition: HasImage
+    Description: Public ALB endpoint - the lab deliverable
+    Value:
+      Fn::GetAtt:
+      - Platform
+      - Outputs.LoadBalancerUrl
+  TestListenerUrl:
+    Condition: HasImage
+    Description: Green fleet during a blue/green shift, before traffic moves
+    Value:
+      Fn::GetAtt:
+      - Platform
+      - Outputs.TestListenerUrl
+  ArtifactBucketName:
+    Condition: HasImage
+    Description: Value for ARTIFACT_BUCKET in the application repository
+    Value:
+      Fn::GetAtt:
+      - Delivery
+      - Outputs.ArtifactBucketName
+  TaskFamily:
+    Condition: HasImage
+    Description: Value for TASK_FAMILY in the application repository
+    Value:
+      Ref: ProjectName
+  TaskExecutionRoleArn:
+    Condition: HasImage
+    Description: Value for TASK_EXEC_ROLE_ARN in the application repository
+    Value:
+      Fn::GetAtt:
+      - Platform
+      - Outputs.TaskExecutionRoleArn
+  TaskRoleArn:
+    Condition: HasImage
+    Description: Value for TASK_ROLE_ARN in the application repository
+    Value:
+      Fn::GetAtt:
+      - Platform
+      - Outputs.TaskRoleArn
+  LogGroupName:
+    Condition: HasImage
+    Description: Value for LOG_GROUP in the application repository
+    Value:
+      Fn::GetAtt:
+      - Platform
+      - Outputs.LogGroupName
+  TaskCpuValue:
+    Description: Value for TASK_CPU in the application repository
+    Value:
+      Ref: TaskCpu
+  TaskMemoryValue:
+    Description: Value for TASK_MEMORY in the application repository
+    Value:
+      Ref: TaskMemory
+  ApplicationRoleArn:
+    Description: Value for AWS_ECR_ROLE_ARN in the application repository
+    Value:
+      Fn::GetAtt:
+      - Registry
+      - Outputs.GitHubActionsRoleArn
+  RepositoryUri:
+    Description: Image URI the application workflow pushes to
+    Value:
+      Fn::GetAtt:
+      - Registry
+      - Outputs.RepositoryUri
+  EcrRepositoryName:
+    Description: Value for ECR_REPOSITORY in the application repository
+    Value:
+      Fn::GetAtt:
+      - Registry
+      - Outputs.RepositoryName
+  DatabaseUrl:
+    Description: Value for DB_URL in the application repository - the proxy, not
+      the instance
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.DatabaseUrl
+  DatabaseSecretArn:
+    Description: Value for DB_SECRET_ARN in the application repository
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.DatabaseSecretArn
+  CacheHost:
+    Description: Value for REDIS_HOST in the application repository
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.CachePrimaryEndpoint
+  CachePort:
+    Description: Value for REDIS_PORT in the application repository
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.CachePort
+  CacheTls:
+    Description: Value for REDIS_SSL in the application repository
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.CacheTransitEncryption
+  PipelineName:
+    Condition: HasImage
+    Value:
+      Fn::GetAtt:
+      - Delivery
+      - Outputs.PipelineName
+  ClusterName:
+    Condition: HasImage
+    Value:
+      Fn::GetAtt:
+      - Platform
+      - Outputs.ClusterName
+  ServiceName:
+    Condition: HasImage
+    Value:
+      Fn::GetAtt:
+      - Platform
+      - Outputs.ServiceName
+  VpcId:
+    Value:
+      Fn::GetAtt:
+      - Network
+      - Outputs.VpcId
+  DatabaseEndpoint:
+    Description: Instance endpoint - reachable only from the proxy, listed for 
+      diagnostics
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.DatabaseEndpoint
+  ProxyEndpoint:
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.ProxyEndpoint
