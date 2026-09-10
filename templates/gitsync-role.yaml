@@ -4,10 +4,16 @@ Description: >
   Git sync needs an IAM role to assume before it can create anything, so this
   one stack cannot be deployed by Git sync itself. Deploy it once by hand with
   scripts/bootstrap-gitsync.sh, then point every Git sync configuration at the
-  role it exports. Permissions are split across three managed policies purely
-  to stay under the 6144-character limit on a single policy document, and every
-  service action is pinned to one region and, where the API supports it, to
-  resources whose name starts with the project prefix.
+  role it exports.
+
+  A sync configuration takes a single role, and a stack created without an
+  explicit execution role is built with the caller's own permissions, so this
+  role has to do both jobs: drive the change sets, and create the resources
+  inside them. It is trusted by both principals accordingly. Permissions are
+  split across four managed policies purely to stay under the 6144-character
+  limit on a single document, and every service action is pinned to one region
+  and, where the API supports it, to resources whose name starts with the
+  project prefix.
 
 Parameters:
   ProjectName:
@@ -127,7 +133,9 @@ Resources:
               - cloudformation:ListStackResources
               - cloudformation:GetTemplate
               - cloudformation:GetTemplateSummary
-            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}-*/*'
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}*'
+              - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}*/*'
 
   PlatformServicesPolicy:
     Type: AWS::IAM::ManagedPolicy
@@ -241,6 +249,63 @@ Resources:
               StringEquals:
                 aws:RequestedRegion: !Ref AWS::Region
 
+  SyncDriverPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectName}-execution-sync'
+      Description: What Git sync itself needs to drive change sets for this project
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: SyncToCloudFormation
+            Effect: Allow
+            Action:
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:ListChangeSets
+              - cloudformation:TagResource
+              - cloudformation:UntagResource
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}*'
+              - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}*/*'
+          - Sid: AccountWideCloudFormationReads
+            Effect: Allow
+            Action:
+              - cloudformation:ListStacks
+              - cloudformation:ValidateTemplate
+              - cloudformation:GetTemplateSummary
+            Resource: '*'
+          - Sid: ManagedSyncRules
+            Effect: Allow
+            Action:
+              - events:PutRule
+              - events:PutTargets
+              - events:RemoveTargets
+              - events:DeleteRule
+            Resource: '*'
+            Condition:
+              StringEquals:
+                events:ManagedBy: cloudformation.sync.codeconnections.amazonaws.com
+          - Sid: DescribeRules
+            Effect: Allow
+            Action: events:DescribeRule
+            Resource: '*'
+          - Sid: UseGitHubConnection
+            Effect: Allow
+            Action:
+              - codeconnections:UseConnection
+              - codestar-connections:UseConnection
+            Resource: '*'
+          - Sid: PassExecutionRoleToCloudFormation
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
+            Condition:
+              StringEquals:
+                iam:PassedToService: cloudformation.amazonaws.com
+
   GitSyncRole:
     Type: AWS::IAM::Role
     Properties:
@@ -251,7 +316,9 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: cloudformation.amazonaws.com
+              Service:
+                - cloudformation.amazonaws.com
+                - cloudformation.sync.codeconnections.amazonaws.com
             Action: sts:AssumeRole
             Condition:
               StringEquals:
@@ -260,6 +327,7 @@ Resources:
         - !Ref CoreResourcesPolicy
         - !Ref PlatformServicesPolicy
         - !Ref DataServicesPolicy
+        - !Ref SyncDriverPolicy
       Tags:
         - Key: project
           Value: !Ref ProjectName
@@ -268,7 +336,7 @@ Resources:
 
 Outputs:
   GitSyncRoleArn:
-    Description: Select this role when creating each Git sync configuration
+    Description: Pass this as --role-arn when creating each Git sync configuration
     Value: !GetAtt GitSyncRole.Arn
   GitSyncRoleName:
     Value: !Ref GitSyncRole
