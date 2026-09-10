@@ -5,6 +5,7 @@ parameters:
   InfrastructureRepo: todo-ecs-infrastructure
   GitHubOwnerId: '78492995'
   CreateOidcProvider: 'false'
+  TemplateRetentionDays: '30'
 tags:
   project: todo-ecs
   layer: bootstrap
