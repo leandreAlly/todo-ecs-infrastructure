@@ -101,6 +101,20 @@ URL per account and the sibling labs already created it).
    Git sync also only reacts to a push that actually changes a file. An empty
    commit will not reconcile anything.
 
+   Two more behaviours worth knowing, because neither reports anything through
+   `get-sync-blocker-summary` and both look identical from the outside - the
+   push lands, and nothing happens:
+
+   - A sync configuration binds to the stack that existed when it was created.
+     Delete and recreate the stack and the configuration keeps pointing at the
+     old one.
+   - A configuration goes dormant after a change set of its own fails, and
+     does not pick up later pushes.
+
+   In both cases the fix is the same: delete the sync configuration and create
+   it again, then push a change. CloudTrail's `CreateChangeSet` events are the
+   only reliable way to see what Git sync actually attempted.
+
 3. **Set this repository's Actions variables** from the bootstrap outputs:
    `AWS_REGION`, `TEMPLATE_BUCKET`, `AWS_PACKAGE_ROLE_ARN`. The packaging
    workflow needs them before it can run.
