@@ -9,4 +9,5 @@ parameters:
   ImageTag: '625cb5c'
 tags:
   project: todo-ecs
+  lab: advanced-ecs
   managed-by: cloudformation-gitsync
