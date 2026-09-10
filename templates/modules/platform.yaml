@@ -234,8 +234,10 @@ Resources:
       TargetGroupAttributes:
         - Key: deregistration_delay.timeout_seconds
           Value: '30'
-        - Key: load_balancing.algorithm.type
-          Value: least_outstanding_requests
+        # slow_start and least_outstanding_requests are mutually exclusive on a
+        # target group. Slow start is the one that matters here: it ramps
+        # traffic into a task that has just passed its health check but is
+        # still interpreting bytecode, which is exactly when a JVM is slowest.
         - Key: slow_start.duration_seconds
           Value: '60'
       Tags:
@@ -260,8 +262,10 @@ Resources:
       TargetGroupAttributes:
         - Key: deregistration_delay.timeout_seconds
           Value: '30'
-        - Key: load_balancing.algorithm.type
-          Value: least_outstanding_requests
+        # slow_start and least_outstanding_requests are mutually exclusive on a
+        # target group. Slow start is the one that matters here: it ramps
+        # traffic into a task that has just passed its health check but is
+        # still interpreting bytecode, which is exactly when a JVM is slowest.
         - Key: slow_start.duration_seconds
           Value: '60'
       Tags:
