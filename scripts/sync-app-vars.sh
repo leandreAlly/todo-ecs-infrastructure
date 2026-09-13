@@ -25,6 +25,7 @@ TaskRoleArn:TASK_ROLE_ARN
 LogGroupName:LOG_GROUP
 DatabaseUrl:DB_URL
 DatabaseSecretArn:DB_SECRET_ARN
+RedisSecretArn:REDIS_SECRET_ARN
 CacheHost:REDIS_HOST
 CachePort:REDIS_PORT
 '

@@ -48,7 +48,8 @@ Parameters:
     Default: 9000
   TestListenerCidr:
     Type: String
-    Default: 0.0.0.0/0
+    Default: 127.0.0.1/32
+    Description: Operator public CIDR allowed to reach the CodeDeploy test listener; override with the current public IP/32.
   DatabasePort:
     Type: Number
     Default: 5432
@@ -223,6 +224,7 @@ Resources:
         TestListenerPort: !Ref TestListenerPort
         DatabaseUrl: !GetAtt Data.Outputs.DatabaseUrl
         DatabaseSecretArn: !GetAtt Data.Outputs.DatabaseSecretArn
+        RedisSecretArn: !GetAtt Data.Outputs.RedisSecretArn
         CacheHost: !GetAtt Data.Outputs.CachePrimaryEndpoint
         CachePort: !GetAtt Data.Outputs.CachePort
         CacheTls: !GetAtt Data.Outputs.CacheTransitEncryption
@@ -249,6 +251,7 @@ Resources:
         TestListenerArn: !GetAtt Platform.Outputs.TestListenerArn
         BlueTargetGroupName: !GetAtt Platform.Outputs.BlueTargetGroupName
         GreenTargetGroupName: !GetAtt Platform.Outputs.GreenTargetGroupName
+        Target5xxAlarmName: !GetAtt Platform.Outputs.Target5xxAlarmName
         ApplicationRoleArn: !GetAtt Registry.Outputs.GitHubActionsRoleArn
       Tags:
         - Key: module
@@ -306,6 +309,9 @@ Outputs:
   DatabaseSecretArn:
     Description: Value for DB_SECRET_ARN in the application repository
     Value: !GetAtt Data.Outputs.DatabaseSecretArn
+  RedisSecretArn:
+    Description: Value for REDIS_SECRET_ARN in the application repository
+    Value: !GetAtt Data.Outputs.RedisSecretArn
   CacheHost:
     Description: Value for REDIS_HOST in the application repository
     Value: !GetAtt Data.Outputs.CachePrimaryEndpoint
