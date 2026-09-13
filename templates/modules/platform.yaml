@@ -38,6 +38,8 @@ Parameters:
     Type: String
   DatabaseSecretArn:
     Type: String
+  RedisSecretArn:
+    Type: String
   CacheHost:
     Type: String
   CachePort:
@@ -93,6 +95,17 @@ Resources:
     Properties:
       LogGroupName: !Sub '/ecs/${ProjectName}'
       RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   Cluster:
     Type: AWS::ECS::Cluster
@@ -103,6 +116,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   TaskExecutionRole:
     Type: AWS::IAM::Role
@@ -125,10 +146,20 @@ Resources:
               - Sid: InjectDatabaseCredentials
                 Effect: Allow
                 Action: secretsmanager:GetSecretValue
-                Resource: !Ref DatabaseSecretArn
+                Resource:
+                  - !Ref DatabaseSecretArn
+                  - !Ref RedisSecretArn
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -147,6 +178,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -170,6 +209,14 @@ Resources:
           PortMappings:
             - ContainerPort: !Ref ContainerPort
               Protocol: tcp
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - wget -q -O - http://127.0.0.1:8080/health >/dev/null || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
           Environment:
             - Name: SPRING_DATASOURCE_URL
               Value: !Ref DatabaseUrl
@@ -188,6 +235,8 @@ Resources:
               ValueFrom: !Sub '${DatabaseSecretArn}:username::'
             - Name: SPRING_DATASOURCE_PASSWORD
               ValueFrom: !Sub '${DatabaseSecretArn}:password::'
+            - Name: SPRING_DATA_REDIS_PASSWORD
+              ValueFrom: !Sub '${RedisSecretArn}:token::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -197,6 +246,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -215,6 +272,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   BlueTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -243,6 +308,16 @@ Resources:
       Tags:
         - Key: colour
           Value: blue
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   GreenTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -271,6 +346,16 @@ Resources:
       Tags:
         - Key: colour
           Value: green
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   ProductionListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -323,6 +408,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
   ScalableTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
@@ -345,6 +438,34 @@ Resources:
         TargetValue: !Ref CpuTargetUtilization
         ScaleInCooldown: 300
         ScaleOutCooldown: 60
+
+  Target5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-target-5xx'
+      AlarmDescription: Roll back a deployment when the ALB serves more than five application 5xx responses in one minute
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: platform
 
 Outputs:
   LoadBalancerUrl:
@@ -375,3 +496,5 @@ Outputs:
     Value: !Ref TestListener
   LogGroupName:
     Value: !Ref LogGroup
+  Target5xxAlarmName:
+    Value: !Ref Target5xxAlarm
