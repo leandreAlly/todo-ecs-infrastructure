@@ -1,7 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   To-Do ECS - container registry and the CI identity that writes to it.
-  A private ECR repository with immutable tags, plus the IAM role the
+  A private ECR repository with a mutable trigger tag and digest-pinned
+  deployment artifacts, plus the IAM role the
   application repository's GitHub Actions workflow assumes through OIDC.
   Deployed before the platform stack because an ECS service cannot start
   without an image already present.
@@ -64,6 +65,17 @@ Resources:
                   "countNumber": ${UntaggedImageExpiryDays}
                 },
                 "action": { "type": "expire" }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Retain the 20 most recent immutable SHA images",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": ["sha-"],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 20
+                },
+                "action": { "type": "expire" }
               }
             ]
           }
@@ -72,6 +84,10 @@ Resources:
           Value: !Ref RepositoryName
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
         - Key: layer
           Value: registry
         - Key: managed-by
@@ -94,8 +110,8 @@ Resources:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
                 token.actions.githubusercontent.com:sub:
-                  - !Sub 'repo:${GitHubOwner}/${GitHubRepo}:*'
-                  - !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepo}@*'
+                  - !Sub 'repo:${GitHubOwner}/${GitHubRepo}:ref:refs/heads/main'
+                  - !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepo}@*:ref:refs/heads/main'
       Policies:
         - PolicyName: EcrPush
           PolicyDocument:
@@ -120,6 +136,12 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: layer
+          Value: registry
         - Key: managed-by
           Value: cloudformation-gitsync
 
