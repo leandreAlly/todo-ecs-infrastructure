@@ -63,6 +63,14 @@ Resources:
           Value: github-actions-oidc
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: bootstrap
 
   TemplateBucket:
     Type: AWS::S3::Bucket
@@ -134,8 +142,8 @@ Resources:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
                 token.actions.githubusercontent.com:sub:
-                  - !Sub 'repo:${GitHubOwner}/${InfrastructureRepo}:*'
-                  - !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${InfrastructureRepo}@*'
+                  - !Sub 'repo:${GitHubOwner}/${InfrastructureRepo}:ref:refs/heads/main'
+                  - !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${InfrastructureRepo}@*:ref:refs/heads/main'
       Policies:
         - PolicyName: PackageTemplates
           PolicyDocument:
@@ -154,8 +162,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
         - Key: managed-by
           Value: cloudformation-gitsync
+        - Key: layer
+          Value: bootstrap
 
 Outputs:
   TemplateBucketName:

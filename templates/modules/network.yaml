@@ -54,7 +54,8 @@ Parameters:
     MaxValue: 65535
   TestListenerCidr:
     Type: String
-    Default: 0.0.0.0/0
+    Default: 127.0.0.1/32
+    Description: Operator public CIDR allowed to reach the CodeDeploy test listener; override with the current public IP/32.
   DatabasePort:
     Type: Number
     Default: 5432
@@ -85,6 +86,16 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-vpc'
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -92,6 +103,16 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-igw'
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   AttachGateway:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -111,6 +132,16 @@ Resources:
           Value: !Sub '${ProjectName}-public-1'
         - Key: Tier
           Value: public
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
@@ -124,6 +155,16 @@ Resources:
           Value: !Sub '${ProjectName}-public-2'
         - Key: Tier
           Value: public
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   AppSubnet1:
     Type: AWS::EC2::Subnet
@@ -137,6 +178,16 @@ Resources:
           Value: !Sub '${ProjectName}-app-1'
         - Key: Tier
           Value: app
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   AppSubnet2:
     Type: AWS::EC2::Subnet
@@ -150,6 +201,16 @@ Resources:
           Value: !Sub '${ProjectName}-app-2'
         - Key: Tier
           Value: app
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   DataSubnet1:
     Type: AWS::EC2::Subnet
@@ -163,6 +224,16 @@ Resources:
           Value: !Sub '${ProjectName}-data-1'
         - Key: Tier
           Value: data
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   DataSubnet2:
     Type: AWS::EC2::Subnet
@@ -176,6 +247,16 @@ Resources:
           Value: !Sub '${ProjectName}-data-2'
         - Key: Tier
           Value: data
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   CacheSubnet1:
     Type: AWS::EC2::Subnet
@@ -189,6 +270,16 @@ Resources:
           Value: !Sub '${ProjectName}-cache-1'
         - Key: Tier
           Value: cache
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   CacheSubnet2:
     Type: AWS::EC2::Subnet
@@ -202,6 +293,16 @@ Resources:
           Value: !Sub '${ProjectName}-cache-2'
         - Key: Tier
           Value: cache
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -210,6 +311,16 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-public-rt'
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   PublicDefaultRoute:
     Type: AWS::EC2::Route
@@ -238,6 +349,16 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-app-rt-1'
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   AppRouteTable2:
     Type: AWS::EC2::RouteTable
@@ -246,6 +367,16 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-app-rt-2'
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   AppSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -266,6 +397,16 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-data-rt'
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   DataSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -286,6 +427,16 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-cache-rt'
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   CacheSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -333,6 +484,16 @@ Resources:
           Value: !Sub '${ProjectName}-alb-sg'
         - Key: Tier
           Value: public
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   TaskSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -365,6 +526,16 @@ Resources:
           Value: !Sub '${ProjectName}-task-sg'
         - Key: Tier
           Value: app
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   VpcEndpointSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -380,6 +551,16 @@ Resources:
           Value: !Sub '${ProjectName}-endpoint-sg'
         - Key: Tier
           Value: app
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   ProxySecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -397,6 +578,16 @@ Resources:
           Value: !Sub '${ProjectName}-proxy-sg'
         - Key: Tier
           Value: data
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   DatabaseSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -412,6 +603,16 @@ Resources:
           Value: !Sub '${ProjectName}-db-sg'
         - Key: Tier
           Value: data
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   CacheSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -427,6 +628,16 @@ Resources:
           Value: !Sub '${ProjectName}-cache-sg'
         - Key: Tier
           Value: cache
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   TaskIngressFromAlb:
     Type: AWS::EC2::SecurityGroupIngress
@@ -507,6 +718,17 @@ Resources:
       RouteTableIds:
         - !Ref AppRouteTable1
         - !Ref AppRouteTable2
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   EcrApiEndpoint:
     Type: AWS::EC2::VPCEndpoint
@@ -520,6 +742,17 @@ Resources:
         - !Ref AppSubnet2
       SecurityGroupIds:
         - !Ref VpcEndpointSecurityGroup
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   EcrDkrEndpoint:
     Type: AWS::EC2::VPCEndpoint
@@ -533,6 +766,17 @@ Resources:
         - !Ref AppSubnet2
       SecurityGroupIds:
         - !Ref VpcEndpointSecurityGroup
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   CloudWatchLogsEndpoint:
     Type: AWS::EC2::VPCEndpoint
@@ -546,6 +790,17 @@ Resources:
         - !Ref AppSubnet2
       SecurityGroupIds:
         - !Ref VpcEndpointSecurityGroup
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
   # For the task execution role, which reads the database secret when a task
   # starts and has no NAT gateway to reach the public endpoint. RDS Proxy also
@@ -563,6 +818,17 @@ Resources:
         - !Ref AppSubnet2
       SecurityGroupIds:
         - !Ref VpcEndpointSecurityGroup
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
 
 Outputs:
   VpcId:

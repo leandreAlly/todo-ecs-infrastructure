@@ -27,6 +27,9 @@ Parameters:
   GreenTargetGroupName:
     Type: String
 
+  Target5xxAlarmName:
+    Type: String
+
   ApplicationRoleArn:
     Type: String
     Description: OIDC role of the application repository, allowed to upload the config bundle
@@ -98,6 +101,12 @@ Resources:
           Value: !Ref ProjectName
         - Key: layer
           Value: delivery
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
 
   ArtifactBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -141,12 +150,31 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
 
   CodeDeployApplication:
     Type: AWS::CodeDeploy::Application
     Properties:
       ApplicationName: !Sub '${ProjectName}-app'
       ComputePlatform: ECS
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
 
   DeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
@@ -169,6 +197,11 @@ Resources:
         Events:
           - DEPLOYMENT_FAILURE
           - DEPLOYMENT_STOP_ON_ALARM
+      AlarmConfiguration:
+        Enabled: true
+        IgnorePollAlarmFailure: false
+        Alarms:
+          - Name: !Ref Target5xxAlarmName
       ECSServices:
         - ClusterName: !Ref ClusterName
           ServiceName: !Ref ServiceName
@@ -183,6 +216,17 @@ Resources:
             TargetGroups:
               - Name: !Ref BlueTargetGroupName
               - Name: !Ref GreenTargetGroupName
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
 
   PipelineRole:
     Type: AWS::IAM::Role
@@ -238,6 +282,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
@@ -284,6 +336,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
 
   EventBridgeRole:
     Type: AWS::IAM::Role
@@ -307,6 +367,14 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
 
   ImagePushRule:
     Type: AWS::Events::Rule
@@ -332,6 +400,17 @@ Resources:
         - Id: delivery-pipeline
           Arn: !Sub 'arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}'
           RoleArn: !GetAtt EventBridgeRole.Arn
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
 
 Outputs:
   ArtifactBucketName:

@@ -331,6 +331,12 @@ Resources:
       Tags:
         - Key: project
           Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
         - Key: layer
           Value: bootstrap
 

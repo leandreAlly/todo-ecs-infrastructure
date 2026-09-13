@@ -8,5 +8,7 @@ parameters:
   TemplateRetentionDays: '30'
 tags:
   project: todo-ecs
+  lab: advanced-ecs
+  owner: leandre
   layer: bootstrap
   managed-by: cloudformation-gitsync
