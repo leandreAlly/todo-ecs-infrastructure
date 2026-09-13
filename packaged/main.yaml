@@ -43,7 +43,9 @@ Parameters:
     Default: 9000
   TestListenerCidr:
     Type: String
-    Default: 0.0.0.0/0
+    Default: 127.0.0.1/32
+    Description: Operator public CIDR allowed to reach the CodeDeploy test 
+      listener; override with the current public IP/32.
   DatabasePort:
     Type: Number
     Default: 5432
@@ -134,7 +136,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/95c5d99b9524509823d0eab086e26d04.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/62e4b32a1ff270c3f15f4b4c346f5d78.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -175,7 +177,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/a671ac7125e39ec0999f81a6bac2ae0f.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/2a5e433c49592fef233e875590706cd8.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -194,7 +196,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/a61d20b727c0e057c99305cc34c48d6a.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/a391862923c733fc61a6c6e9774baa4f.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -248,7 +250,7 @@ Resources:
     Condition: HasImage
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/295acdbabede3203ea6a6dbaf637d58d.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/b131fedd6392598128b17290cf950fe3.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -286,6 +288,10 @@ Resources:
           Fn::GetAtt:
           - Data
           - Outputs.DatabaseSecretArn
+        RedisSecretArn:
+          Fn::GetAtt:
+          - Data
+          - Outputs.RedisSecretArn
         CacheHost:
           Fn::GetAtt:
           - Data
@@ -316,7 +322,7 @@ Resources:
     Condition: HasImage
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/d4d69919fbb1e8f2a14870fb2e187dcb.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/430c2cec8355c7d55eb93152a1bdbb6a.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -348,6 +354,10 @@ Resources:
           Fn::GetAtt:
           - Platform
           - Outputs.GreenTargetGroupName
+        Target5xxAlarmName:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.Target5xxAlarmName
         ApplicationRoleArn:
           Fn::GetAtt:
           - Registry
@@ -442,6 +452,12 @@ Outputs:
       Fn::GetAtt:
       - Data
       - Outputs.DatabaseSecretArn
+  RedisSecretArn:
+    Description: Value for REDIS_SECRET_ARN in the application repository
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.RedisSecretArn
   CacheHost:
     Description: Value for REDIS_HOST in the application repository
     Value:
