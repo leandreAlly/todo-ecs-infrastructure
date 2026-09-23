@@ -5,7 +5,7 @@ Description: >
   app subnets for ECS tasks, data subnets for RDS and its proxy, and cache
   subnets for ElastiCache. Nothing private has a route to the internet - there
   is no NAT gateway, so tasks reach ECR, S3, CloudWatch Logs and Secrets
-  Manager through VPC endpoints instead. This module owns every security group
+  Manager through VPC endpoints instead. This stack owns every security group
   so the rules can reference each other without cross-stack circularity.
 
 Parameters:
@@ -453,7 +453,7 @@ Resources:
   # Every security group declares its egress inline so the permissive
   # "allow all outbound" rule EC2 adds by default is replaced. Egress therefore
   # has to form a DAG - alb -> task -> {endpoint, proxy, cache} and
-  # proxy -> {database, endpoint} - while ingress is attached as standalone
+  # proxy -> database - while ingress is attached as standalone
   # resources, which can never create a cycle. Groups that legitimately need no
   # outbound access carry a single unreachable rule to hold that position.
 
@@ -505,7 +505,7 @@ Resources:
           FromPort: 443
           ToPort: 443
           DestinationSecurityGroupId: !Ref VpcEndpointSecurityGroup
-          Description: ECR, CloudWatch Logs and Secrets Manager over interface endpoints
+          Description: ECR, CloudWatch Logs, Secrets Manager and SSM over interface endpoints
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
@@ -811,6 +811,36 @@ Resources:
     Properties:
       VpcId: !Ref Vpc
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref AppSubnet1
+        - !Ref AppSubnet2
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: network
+
+  # The task execution role now also reads three SSM parameters when a task
+  # starts - the database URL and the cache host and port, which are generated
+  # by AWS and so cannot be written into a committed task definition. Same
+  # reasoning as the Secrets Manager endpoint above: no NAT gateway, so the
+  # call has to have somewhere inside the VPC to land. Without this, tasks fail
+  # to start with a ResourceInitializationError naming the parameter.
+  SsmEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ssm'
       VpcEndpointType: Interface
       PrivateDnsEnabled: true
       SubnetIds:

@@ -1,0 +1,729 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  To-Do ECS - delivery pipeline.
+  An EventBridge rule watching for successful image pushes to the project's ECR
+  repository starts a CodePipeline with the exact image digest and Git commit.
+  CodeBuild renders CloudFormation-owned values into the deployment templates,
+  then CodeDeploy performs a blue/green deployment onto the ECS service.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: todo-ecs
+
+  EcrRepositoryName:
+    Type: String
+
+  ClusterName:
+    Type: String
+  ServiceName:
+    Type: String
+
+  ProductionListenerArn:
+    Type: String
+  TestListenerArn:
+    Type: String
+  BlueTargetGroupName:
+    Type: String
+  GreenTargetGroupName:
+    Type: String
+
+  Target5xxAlarmName:
+    Type: String
+
+  TaskFamily:
+    Type: String
+  TaskExecutionRoleArn:
+    Type: String
+  TaskRoleArn:
+    Type: String
+  ContainerPort:
+    Type: Number
+  TaskCpu:
+    Type: String
+  TaskMemory:
+    Type: String
+  LogGroupName:
+    Type: String
+  DatabaseUrlParameterArn:
+    Type: String
+  CacheHostParameterArn:
+    Type: String
+  CachePortParameterArn:
+    Type: String
+  DatabaseSecretArn:
+    Type: String
+  RedisSecretArn:
+    Type: String
+  CacheTls:
+    Type: String
+  CacheTtlSeconds:
+    Type: String
+    Default: '30'
+
+  ConnectionArn:
+    Type: String
+    Description: >
+      CodeConnections connection to GitHub, created by the bootstrap stack and
+      approved once by hand. It lives there rather than here so that rebuilding
+      the lab does not mean approving a new connection each time.
+
+  ApplicationRepositoryId:
+    Type: String
+    Default: leandreAlly/todo-ecs-app
+    Description: owner/name of the repository holding taskdef.json and appspec.yaml
+
+  ApplicationBranch:
+    Type: String
+    Default: main
+
+  DeploymentConfigName:
+    Type: String
+    Default: CodeDeployDefault.ECSCanary10Percent5Minutes
+    AllowedValues:
+      - CodeDeployDefault.ECSAllAtOnce
+      - CodeDeployDefault.ECSCanary10Percent5Minutes
+      - CodeDeployDefault.ECSCanary10Percent15Minutes
+      - CodeDeployDefault.ECSLinear10PercentEvery1Minutes
+      - CodeDeployDefault.ECSLinear10PercentEvery3Minutes
+    Description: >
+      All-at-once flips the listener in one step, which leaves nothing to
+      observe. The canary default sends a tenth of production traffic to the
+      green target group for five minutes first, so the version badge in the
+      UI visibly alternates between the two commits while the shift is running.
+
+  MutableImageTag:
+    Type: String
+    Default: latest
+    Description: >
+      Mutable convenience tag excluded from deployment triggers. Immutable
+      commit tags start the pipeline and are pinned by digest from the event.
+
+  TerminationWaitMinutes:
+    Type: Number
+    Default: 5
+    MinValue: 0
+    MaxValue: 2880
+
+  ArtifactRetentionDays:
+    Type: Number
+    Default: 30
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-artifacts-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-artifact-versions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: !Ref ArtifactRetentionDays
+          - Id: abort-incomplete-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: layer
+          Value: delivery
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+
+  ArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt ArtifactBucket.Arn
+              - !Sub '${ArtifactBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Lets CodeDeploy shift traffic between the blue and green target groups
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AWSCodeDeployRoleForECS'
+      Policies:
+        - PolicyName: PassTaskRoles
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !Ref TaskExecutionRoleArn
+                  - !Ref TaskRoleArn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService:
+                      - ecs.amazonaws.com
+                      - ecs-tasks.amazonaws.com
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Sub '${ProjectName}-app'
+      ComputePlatform: ECS
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  DeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: !Sub '${ProjectName}-dg'
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      DeploymentConfigName: !Ref DeploymentConfigName
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      BlueGreenDeploymentConfiguration:
+        DeploymentReadyOption:
+          ActionOnTimeout: CONTINUE_DEPLOYMENT
+        TerminateBlueInstancesOnDeploymentSuccess:
+          Action: TERMINATE
+          TerminationWaitTimeInMinutes: !Ref TerminationWaitMinutes
+      AutoRollbackConfiguration:
+        Enabled: true
+        Events:
+          - DEPLOYMENT_FAILURE
+          - DEPLOYMENT_STOP_ON_ALARM
+      AlarmConfiguration:
+        Enabled: true
+        IgnorePollAlarmFailure: false
+        Alarms:
+          - Name: !Ref Target5xxAlarmName
+      ECSServices:
+        - ClusterName: !Ref ClusterName
+          ServiceName: !Ref ServiceName
+      LoadBalancerInfo:
+        TargetGroupPairInfoList:
+          - ProdTrafficRoute:
+              ListenerArns:
+                - !Ref ProductionListenerArn
+            TestTrafficRoute:
+              ListenerArns:
+                - !Ref TestListenerArn
+            TargetGroups:
+              - Name: !Ref BlueTargetGroupName
+              - Name: !Ref GreenTargetGroupName
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Execution identity for the delivery pipeline
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelineExecution
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: Artifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:GetBucketVersioning
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub '${ArtifactBucket.Arn}/*'
+              - Sid: ReadApplicationRepository
+                Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                  - codeconnections:UseConnection
+                Resource: !Ref ConnectionArn
+              - Sid: ReadImageDetail
+                Effect: Allow
+                Action: ecr:DescribeImages
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}'
+              - Sid: CreateAndReadDeployment
+                Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:GetDeployment
+                Resource: !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ProjectName}-app/${ProjectName}-dg'
+              - Sid: ReadDeploymentConfiguration
+                Effect: Allow
+                Action: codedeploy:GetDeploymentConfig
+                Resource: !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:*'
+              - Sid: ReadAndRegisterApplicationRevision
+                Effect: Allow
+                Action:
+                  - codedeploy:GetApplication
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:RegisterApplicationRevision
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:application:${ProjectName}-app'
+                  - !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:application:${ProjectName}-app/*'
+              - Sid: RenderDeploymentConfiguration
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: !GetAtt DeploymentConfigProject.Arn
+              - Sid: DescribeAndRegisterTasks
+                Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:RegisterTaskDefinition
+                Resource: '*'
+              - Sid: TagRegisteredTaskDefinitions
+                Effect: Allow
+                Action: ecs:TagResource
+                Resource: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${TaskFamily}:*'
+                Condition:
+                  StringEquals:
+                    ecs:CreateAction: RegisterTaskDefinition
+              - Sid: PassTaskRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !Ref TaskExecutionRoleArn
+                  - !Ref TaskRoleArn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService:
+                      - ecs.amazonaws.com
+                      - ecs-tasks.amazonaws.com
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  DeploymentConfigLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/codebuild/${ProjectName}-deployment-config'
+      RetentionInDays: 7
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  DeploymentConfigBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Renders portable ECS deployment artifacts from CloudFormation values
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RenderDeploymentConfiguration
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: PipelineArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:GetBucketVersioning
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub '${ArtifactBucket.Arn}/*'
+              - Sid: BuildLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt DeploymentConfigLogGroup.Arn
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  DeploymentConfigProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub '${ProjectName}-deployment-config'
+      ServiceRole: !GetAtt DeploymentConfigBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - mkdir -p rendered
+                - |
+                  jq --arg family "$TASK_FAMILY" \
+                     --arg execRole "$TASK_EXECUTION_ROLE_ARN" \
+                     --arg taskRole "$TASK_ROLE_ARN" \
+                     --arg containerPort "$CONTAINER_PORT" \
+                     --arg cpu "$TASK_CPU" \
+                     --arg memory "$TASK_MEMORY" \
+                     --arg logGroup "$LOG_GROUP_NAME" \
+                     --arg region "$DEPLOY_REGION" \
+                     --arg dbUrlParameter "$DATABASE_URL_PARAMETER_ARN" \
+                     --arg cacheHostParameter "$CACHE_HOST_PARAMETER_ARN" \
+                     --arg cachePortParameter "$CACHE_PORT_PARAMETER_ARN" \
+                     --arg dbSecret "$DATABASE_SECRET_ARN" \
+                     --arg redisSecret "$REDIS_SECRET_ARN" \
+                     --arg cacheTls "$CACHE_TLS" \
+                     --arg cacheTtl "$CACHE_TTL_SECONDS" \
+                     '
+                       .family = $family
+                       | .executionRoleArn = $execRole
+                       | .taskRoleArn = $taskRole
+                       | .cpu = $cpu
+                       | .memory = $memory
+                       | .containerDefinitions[0].portMappings[0].containerPort = ($containerPort | tonumber)
+                       | .containerDefinitions[0].healthCheck.command[1] = ("wget -q -O - http://127.0.0.1:" + $containerPort + "/health >/dev/null || exit 1")
+                       | .containerDefinitions[0].environment |= map(
+                           if .name == "SERVER_PORT" then .value = $containerPort
+                           elif .name == "SPRING_DATA_REDIS_SSL_ENABLED" then .value = $cacheTls
+                           elif .name == "APP_CACHE_TTL_SECONDS" then .value = $cacheTtl
+                           else . end)
+                       | .containerDefinitions[0].secrets |= map(
+                           if .name == "SPRING_DATASOURCE_URL" then .valueFrom = $dbUrlParameter
+                           elif .name == "SPRING_DATA_REDIS_HOST" then .valueFrom = $cacheHostParameter
+                           elif .name == "SPRING_DATA_REDIS_PORT" then .valueFrom = $cachePortParameter
+                           elif .name == "SPRING_DATASOURCE_USERNAME" then .valueFrom = ($dbSecret + ":username::")
+                           elif .name == "SPRING_DATASOURCE_PASSWORD" then .valueFrom = ($dbSecret + ":password::")
+                           elif .name == "SPRING_DATA_REDIS_PASSWORD" then .valueFrom = ($redisSecret + ":token::")
+                           else . end)
+                       | .containerDefinitions[0].logConfiguration.options["awslogs-group"] = $logGroup
+                       | .containerDefinitions[0].logConfiguration.options["awslogs-region"] = $region
+                     ' taskdef.json > rendered/taskdef.json
+                - sed "s/<CONTAINER_PORT>/$CONTAINER_PORT/g" appspec.yaml > rendered/appspec.yaml
+                - test "$(jq -r '.containerDefinitions[0].image' rendered/taskdef.json)" = '<IMAGE1_NAME>'
+                - test -z "$(grep -Eoh '<[A-Z0-9_]+>' rendered/taskdef.json rendered/appspec.yaml | grep -Ev '^<(IMAGE1_NAME|TASK_DEFINITION)>$' || true)"
+          artifacts:
+            base-directory: rendered
+            files:
+              - taskdef.json
+              - appspec.yaml
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: TASK_FAMILY
+            Value: !Ref TaskFamily
+          - Name: TASK_EXECUTION_ROLE_ARN
+            Value: !Ref TaskExecutionRoleArn
+          - Name: TASK_ROLE_ARN
+            Value: !Ref TaskRoleArn
+          - Name: CONTAINER_PORT
+            Value: !Ref ContainerPort
+          - Name: TASK_CPU
+            Value: !Ref TaskCpu
+          - Name: TASK_MEMORY
+            Value: !Ref TaskMemory
+          - Name: LOG_GROUP_NAME
+            Value: !Ref LogGroupName
+          - Name: DEPLOY_REGION
+            Value: !Ref AWS::Region
+          - Name: DATABASE_URL_PARAMETER_ARN
+            Value: !Ref DatabaseUrlParameterArn
+          - Name: CACHE_HOST_PARAMETER_ARN
+            Value: !Ref CacheHostParameterArn
+          - Name: CACHE_PORT_PARAMETER_ARN
+            Value: !Ref CachePortParameterArn
+          - Name: DATABASE_SECRET_ARN
+            Value: !Ref DatabaseSecretArn
+          - Name: REDIS_SECRET_ARN
+            Value: !Ref RedisSecretArn
+          - Name: CACHE_TLS
+            Value: !Ref CacheTls
+          - Name: CACHE_TTL_SECONDS
+            Value: !Ref CacheTtlSeconds
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref DeploymentConfigLogGroup
+          StreamName: render
+      TimeoutInMinutes: 5
+      QueuedTimeoutInMinutes: 15
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub '${ProjectName}-pipeline'
+      RoleArn: !GetAtt PipelineRole.Arn
+      PipelineType: V2
+      ExecutionMode: QUEUED
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            # The deployment description is committed, so the pipeline reads it
+            # from the repository rather than from a bundle the build produced.
+            # DetectChanges is false because this connection would otherwise
+            # register a webhook of its own, and the rule below is meant to be
+            # the only thing that starts this pipeline.
+            - Name: DeploymentConfig
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: !Ref ApplicationRepositoryId
+                BranchName: !Ref ApplicationBranch
+                DetectChanges: false
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceArtifact
+              RunOrder: 1
+
+            - Name: Image
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: ECR
+                Version: '1'
+              Configuration:
+                RepositoryName: !Ref EcrRepositoryName
+                ImageTag: !Ref MutableImageTag
+              OutputArtifacts:
+                - Name: ImageArtifact
+              RunOrder: 1
+        - Name: Render
+          Actions:
+            - Name: RenderTaskDefinition
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref DeploymentConfigProject
+              InputArtifacts:
+                - Name: SourceArtifact
+              OutputArtifacts:
+                - Name: RenderedArtifact
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: BlueGreenDeploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CodeDeployToECS
+                Version: '1'
+              Configuration:
+                ApplicationName: !Ref CodeDeployApplication
+                DeploymentGroupName: !Ref DeploymentGroup
+                TaskDefinitionTemplateArtifact: RenderedArtifact
+                TaskDefinitionTemplatePath: taskdef.json
+                AppSpecTemplateArtifact: RenderedArtifact
+                AppSpecTemplatePath: appspec.yaml
+                Image1ArtifactName: ImageArtifact
+                Image1ContainerName: IMAGE1_NAME
+              InputArtifacts:
+                - Name: RenderedArtifact
+                - Name: ImageArtifact
+              RunOrder: 1
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  EventBridgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Lets EventBridge start the delivery pipeline
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StartPipeline
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: codepipeline:StartPipelineExecution
+                Resource: !Sub 'arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}'
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+  ImagePushRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${ProjectName}-ecr-image-push'
+      Description: Starts the delivery pipeline when a new image is pushed to ECR
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.ecr
+        detail-type:
+          - ECR Image Action
+        detail:
+          action-type:
+            - PUSH
+          result:
+            - SUCCESS
+          image-tag:
+            - anything-but:
+                - !Ref MutableImageTag
+          repository-name:
+            - !Ref EcrRepositoryName
+      Targets:
+        - Id: delivery-pipeline
+          Arn: !Sub 'arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}'
+          RoleArn: !GetAtt EventBridgeRole.Arn
+          InputTransformer:
+            InputPathsMap:
+              commitId: $.detail.image-tag
+              imageDigest: $.detail.image-digest
+            InputTemplate: >-
+              {"sourceRevisions":[{"actionName":"DeploymentConfig","revisionType":"COMMIT_ID","revisionValue":"<commitId>"},{"actionName":"Image","revisionType":"IMAGE_DIGEST","revisionValue":"<imageDigest>"}]}
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: delivery
+
+Outputs:
+  ArtifactBucketName:
+    Description: Pipeline artifact store - nothing outside the pipeline writes to it
+    Value: !Ref ArtifactBucket
+  PipelineName:
+    Value: !Ref Pipeline
+  CodeDeployApplicationName:
+    Value: !Ref CodeDeployApplication
+  DeploymentGroupName:
+    Value: !Ref DeploymentGroup

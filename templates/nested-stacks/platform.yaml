@@ -34,16 +34,24 @@ Parameters:
     Type: Number
     Default: 9000
 
-  DatabaseUrl:
+  ServiceTaskDefinitionArn:
     Type: String
+    Default: ''
+    Description: >
+      Revision the service should keep running. ECS rejects any CloudFormation
+      update that changes TaskDefinition on a CODE_DEPLOY service - "Use AWS
+      CodeDeploy to trigger a new deployment" - and that includes edits this
+      template makes to the task definition for its own reasons, not just the
+      image tag. Leave empty on the first create, then pin it to whatever
+      CodeDeploy last registered. A pinned value is a constant, so
+      CloudFormation stops touching the service at all.
+
   DatabaseSecretArn:
     Type: String
+    Description: Full ARN, used to scope the execution role's read of the credentials
   RedisSecretArn:
     Type: String
-  CacheHost:
-    Type: String
-  CachePort:
-    Type: String
+    Description: Full ARN, used to scope the execution role's read of the auth token
   CacheTls:
     Type: String
     Default: 'true'
@@ -89,6 +97,9 @@ Parameters:
     Type: Number
     Default: 7
 
+Conditions:
+  HasServiceTaskDefinition: !Not [!Equals [!Ref ServiceTaskDefinitionArn, '']]
+
 Resources:
   LogGroup:
     Type: AWS::Logs::LogGroup
@@ -128,6 +139,7 @@ Resources:
   TaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub '${ProjectName}-task-execution'
       Description: Pulls the image from ECR, writes container logs and reads the database secret
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
@@ -137,9 +149,9 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
       Policies:
-        - PolicyName: ReadDatabaseSecret
+        - PolicyName: ReadTaskConfiguration
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -149,6 +161,10 @@ Resources:
                 Resource:
                   - !Ref DatabaseSecretArn
                   - !Ref RedisSecretArn
+              - Sid: InjectGeneratedEndpoints
+                Effect: Allow
+                Action: ssm:GetParameters
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/*'
       Tags:
         - Key: project
           Value: !Ref ProjectName
@@ -164,6 +180,7 @@ Resources:
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub '${ProjectName}-task'
       Description: >
         Identity the application runs as. It talks to PostgreSQL and Redis over
         the network with credentials handed to it at start-up, so it calls no
@@ -212,18 +229,14 @@ Resources:
           HealthCheck:
             Command:
               - CMD-SHELL
-              - wget -q -O - http://127.0.0.1:8080/health >/dev/null || exit 1
+              - !Sub 'wget -q -O - http://127.0.0.1:${ContainerPort}/health >/dev/null || exit 1'
             Interval: 30
             Timeout: 5
             Retries: 3
             StartPeriod: 60
           Environment:
-            - Name: SPRING_DATASOURCE_URL
-              Value: !Ref DatabaseUrl
-            - Name: SPRING_DATA_REDIS_HOST
-              Value: !Ref CacheHost
-            - Name: SPRING_DATA_REDIS_PORT
-              Value: !Ref CachePort
+            - Name: SERVER_PORT
+              Value: !Sub '${ContainerPort}'
             - Name: SPRING_DATA_REDIS_SSL_ENABLED
               Value: !Ref CacheTls
             - Name: APP_CACHE_ENABLED
@@ -231,6 +244,12 @@ Resources:
             - Name: APP_CACHE_TTL_SECONDS
               Value: !Ref CacheTtlSeconds
           Secrets:
+            - Name: SPRING_DATASOURCE_URL
+              ValueFrom: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/db-url'
+            - Name: SPRING_DATA_REDIS_HOST
+              ValueFrom: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/redis-host'
+            - Name: SPRING_DATA_REDIS_PORT
+              ValueFrom: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/redis-port'
             - Name: SPRING_DATASOURCE_USERNAME
               ValueFrom: !Sub '${DatabaseSecretArn}:username::'
             - Name: SPRING_DATASOURCE_PASSWORD
@@ -384,7 +403,10 @@ Resources:
       - TestListener
     Properties:
       Cluster: !Ref Cluster
-      TaskDefinition: !Ref TaskDefinition
+      TaskDefinition: !If
+        - HasServiceTaskDefinition
+        - !Ref ServiceTaskDefinitionArn
+        - !Ref TaskDefinition
       LaunchType: FARGATE
       PlatformVersion: LATEST
       DesiredCount: !Ref DesiredCount

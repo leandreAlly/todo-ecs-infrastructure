@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   To-Do ECS - container registry and the CI identity that writes to it.
-  A private ECR repository with a mutable trigger tag and digest-pinned
+  A private ECR repository with immutable commit tags and digest-pinned
   deployment artifacts, plus the IAM role the
   application repository's GitHub Actions workflow assumes through OIDC.
   Deployed before the platform stack because an ECS service cannot start
@@ -34,44 +34,33 @@ Parameters:
       immutable OIDC subject claim of the form
       repo:owner@ownerid/repo@repoid:ref:... instead of repo:owner/repo:ref:...
 
-  UntaggedImageExpiryDays:
-    Type: Number
-    Default: 1
-    MinValue: 1
-    MaxValue: 365
-
 Resources:
   EcrRepository:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: !Ref RepositoryName
-      ImageTagMutability: MUTABLE
+      ImageTagMutability: IMMUTABLE_WITH_EXCLUSION
+      ImageTagMutabilityExclusionFilters:
+        - ImageTagMutabilityExclusionFilterType: WILDCARD
+          ImageTagMutabilityExclusionFilterValue: latest
       EmptyOnDelete: true
       ImageScanningConfiguration:
         ScanOnPush: true
-      EncryptionConfiguration:
-        EncryptionType: AES256
       LifecyclePolicy:
-        LifecyclePolicyText: !Sub |
+        # One policy, one rule. A repository has exactly one lifecycle policy,
+        # and every image in it - the mutable "latest" tag, immutable commit
+        # tags and the untagged layers left behind when "latest" moves -
+        # is expired by this single count rule. The twenty most recent images
+        # cover far more than the deployment history a rollback ever reaches
+        # back through.
+        LifecyclePolicyText: |
           {
             "rules": [
               {
                 "rulePriority": 1,
-                "description": "Expire untagged images after ${UntaggedImageExpiryDays} day(s)",
+                "description": "Retain the 20 most recent images, expire the rest",
                 "selection": {
-                  "tagStatus": "untagged",
-                  "countType": "sinceImagePushed",
-                  "countUnit": "days",
-                  "countNumber": ${UntaggedImageExpiryDays}
-                },
-                "action": { "type": "expire" }
-              },
-              {
-                "rulePriority": 2,
-                "description": "Retain the 20 most recent immutable SHA images",
-                "selection": {
-                  "tagStatus": "tagged",
-                  "tagPrefixList": ["sha-"],
+                  "tagStatus": "any",
                   "countType": "imageCountMoreThan",
                   "countNumber": 20
                 },

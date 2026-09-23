@@ -1,10 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   To-Do ECS - root stack.
-  Nests every module for this project. Child templates are referenced by local
-  path here; "aws cloudformation package" rewrites each TemplateURL to a
-  content-hashed S3 object, so a module only updates when its own template
-  changes. Deploy this stack, never its children.
+  Nests every child stack for this project. Child templates are referenced by
+  local path here; "aws cloudformation package" rewrites each TemplateURL to
+  a content-hashed S3 object, so a nested stack only updates when its own
+  template changes. Deploy this stack, never its children.
 
 Parameters:
   ProjectName:
@@ -81,13 +81,22 @@ Parameters:
     Type: String
     Default: todo-ecs-app
 
+  ServiceTaskDefinitionArn:
+    Type: String
+    Default: ''
+    Description: >
+      Task definition revision the ECS service should keep running. Empty on
+      the first create; pin it to the revision CodeDeploy last registered so
+      that later template edits cannot try to move the service themselves -
+      ECS rejects that on a CODE_DEPLOY service.
+
   ImageTag:
     Type: String
     Default: ''
     Description: >
-      Image tag to run. Leave empty on the first deploy - the platform module
+      Image tag to run. Leave empty on the first deploy - the platform stack
       is only created once an image exists in the registry, because an ECS
-      service cannot start without a real image to pull. The data module is
+      service cannot start without a real image to pull. The data stack is
       deliberately outside this condition so the database and cache are already
       warm by the time the first image lands.
 
@@ -140,12 +149,11 @@ Parameters:
 
 Conditions:
   HasImage: !Not [!Equals [!Ref ImageTag, '']]
-
 Resources:
   Network:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: modules/network.yaml
+      TemplateURL: nested-stacks/network.yaml
       Parameters:
         ProjectName: !Ref ProjectName
         VpcCidr: !Ref VpcCidr
@@ -164,13 +172,13 @@ Resources:
         CachePort: !Ref CachePort
         S3PrefixListId: !Ref S3PrefixListId
       Tags:
-        - Key: module
+        - Key: nested-stack
           Value: network
 
   Registry:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: modules/registry.yaml
+      TemplateURL: nested-stacks/registry.yaml
       Parameters:
         ProjectName: !Ref ProjectName
         RepositoryName: !Ref RepositoryName
@@ -178,13 +186,13 @@ Resources:
         GitHubOwnerId: !Ref GitHubOwnerId
         GitHubRepo: !Ref ApplicationRepo
       Tags:
-        - Key: module
+        - Key: nested-stack
           Value: registry
 
   Data:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: modules/data.yaml
+      TemplateURL: nested-stacks/data.yaml
       Parameters:
         ProjectName: !Ref ProjectName
         DataSubnetIds: !GetAtt Network.Outputs.DataSubnetIds
@@ -204,14 +212,14 @@ Resources:
         CacheClusterCount: !Ref CacheClusterCount
         CachePort: !Ref CachePort
       Tags:
-        - Key: module
+        - Key: nested-stack
           Value: data
 
   Platform:
     Type: AWS::CloudFormation::Stack
     Condition: HasImage
     Properties:
-      TemplateURL: modules/platform.yaml
+      TemplateURL: nested-stacks/platform.yaml
       Parameters:
         ProjectName: !Ref ProjectName
         VpcId: !GetAtt Network.Outputs.VpcId
@@ -222,26 +230,24 @@ Resources:
         ContainerImage: !Sub '${Registry.Outputs.RepositoryUri}:${ImageTag}'
         ContainerPort: !Ref ContainerPort
         TestListenerPort: !Ref TestListenerPort
-        DatabaseUrl: !GetAtt Data.Outputs.DatabaseUrl
         DatabaseSecretArn: !GetAtt Data.Outputs.DatabaseSecretArn
         RedisSecretArn: !GetAtt Data.Outputs.RedisSecretArn
-        CacheHost: !GetAtt Data.Outputs.CachePrimaryEndpoint
-        CachePort: !GetAtt Data.Outputs.CachePort
         CacheTls: !GetAtt Data.Outputs.CacheTransitEncryption
+        ServiceTaskDefinitionArn: !Ref ServiceTaskDefinitionArn
         TaskCpu: !Ref TaskCpu
         TaskMemory: !Ref TaskMemory
         MinCapacity: !Ref MinCapacity
         MaxCapacity: !Ref MaxCapacity
         CpuTargetUtilization: !Ref CpuTargetUtilization
       Tags:
-        - Key: module
+        - Key: nested-stack
           Value: platform
 
   Delivery:
     Type: AWS::CloudFormation::Stack
     Condition: HasImage
     Properties:
-      TemplateURL: modules/delivery.yaml
+      TemplateURL: nested-stacks/delivery.yaml
       Parameters:
         ProjectName: !Ref ProjectName
         EcrRepositoryName: !GetAtt Registry.Outputs.RepositoryName
@@ -252,9 +258,24 @@ Resources:
         BlueTargetGroupName: !GetAtt Platform.Outputs.BlueTargetGroupName
         GreenTargetGroupName: !GetAtt Platform.Outputs.GreenTargetGroupName
         Target5xxAlarmName: !GetAtt Platform.Outputs.Target5xxAlarmName
-        ApplicationRoleArn: !GetAtt Registry.Outputs.GitHubActionsRoleArn
+        TaskFamily: !Ref ProjectName
+        TaskExecutionRoleArn: !GetAtt Platform.Outputs.TaskExecutionRoleArn
+        TaskRoleArn: !GetAtt Platform.Outputs.TaskRoleArn
+        ContainerPort: !Ref ContainerPort
+        TaskCpu: !Ref TaskCpu
+        TaskMemory: !Ref TaskMemory
+        LogGroupName: !GetAtt Platform.Outputs.LogGroupName
+        DatabaseUrlParameterArn: !GetAtt Data.Outputs.DatabaseUrlParameterArn
+        CacheHostParameterArn: !GetAtt Data.Outputs.CacheHostParameterArn
+        CachePortParameterArn: !GetAtt Data.Outputs.CachePortParameterArn
+        DatabaseSecretArn: !GetAtt Data.Outputs.DatabaseSecretArn
+        RedisSecretArn: !GetAtt Data.Outputs.RedisSecretArn
+        CacheTls: !GetAtt Data.Outputs.CacheTransitEncryption
+        ConnectionArn:
+          Fn::ImportValue: !Sub '${ProjectName}-github-connection-arn'
+        ApplicationRepositoryId: !Sub '${GitHubOwner}/${ApplicationRepo}'
       Tags:
-        - Key: module
+        - Key: nested-stack
           Value: delivery
 
 Outputs:
@@ -267,61 +288,66 @@ Outputs:
     Description: Green fleet during a blue/green shift, before traffic moves
     Value: !GetAtt Platform.Outputs.TestListenerUrl
 
-  ArtifactBucketName:
-    Condition: HasImage
-    Description: Value for ARTIFACT_BUCKET in the application repository
-    Value: !GetAtt Delivery.Outputs.ArtifactBucketName
+  # The two values the application repository still holds. Everything else it
+  # used to be told is either committed in taskdef.json or read at run time
+  # from a fixed SSM path, so it is no longer copied anywhere.
+  ApplicationRoleArn:
+    Description: Value for the AWS_ECR_ROLE_ARN secret in the application repository
+    Value: !GetAtt Registry.Outputs.GitHubActionsRoleArn
+  EcrRepositoryName:
+    Description: Value for the ECR_REPOSITORY variable in the application repository
+    Value: !GetAtt Registry.Outputs.RepositoryName
+
+  # Values injected into the deployment task definition by CodeBuild.
   TaskFamily:
-    Condition: HasImage
-    Description: Value for TASK_FAMILY in the application repository
+    Description: family in taskdef.json
     Value: !Ref ProjectName
   TaskExecutionRoleArn:
     Condition: HasImage
-    Description: Value for TASK_EXEC_ROLE_ARN in the application repository
+    Description: executionRoleArn in taskdef.json
     Value: !GetAtt Platform.Outputs.TaskExecutionRoleArn
   TaskRoleArn:
     Condition: HasImage
-    Description: Value for TASK_ROLE_ARN in the application repository
+    Description: taskRoleArn in taskdef.json
     Value: !GetAtt Platform.Outputs.TaskRoleArn
   LogGroupName:
     Condition: HasImage
-    Description: Value for LOG_GROUP in the application repository
+    Description: awslogs-group in taskdef.json
     Value: !GetAtt Platform.Outputs.LogGroupName
-  TaskCpuValue:
-    Description: Value for TASK_CPU in the application repository
-    Value: !Ref TaskCpu
-  TaskMemoryValue:
-    Description: Value for TASK_MEMORY in the application repository
-    Value: !Ref TaskMemory
-  ApplicationRoleArn:
-    Description: Value for AWS_ECR_ROLE_ARN in the application repository
-    Value: !GetAtt Registry.Outputs.GitHubActionsRoleArn
+  DatabaseUrlParameterArn:
+    Description: valueFrom for SPRING_DATASOURCE_URL in taskdef.json
+    Value: !GetAtt Data.Outputs.DatabaseUrlParameterArn
+  CacheHostParameterArn:
+    Description: valueFrom for SPRING_DATA_REDIS_HOST in taskdef.json
+    Value: !GetAtt Data.Outputs.CacheHostParameterArn
+  CachePortParameterArn:
+    Description: valueFrom for SPRING_DATA_REDIS_PORT in taskdef.json
+    Value: !GetAtt Data.Outputs.CachePortParameterArn
+  # Diagnostics.
+  DatabaseUrl:
+    Description: Resolved JDBC URL - the proxy, not the instance
+    Value: !GetAtt Data.Outputs.DatabaseUrl
+  DatabaseEndpoint:
+    Description: Instance endpoint - reachable only from the proxy
+    Value: !GetAtt Data.Outputs.DatabaseEndpoint
+  ProxyEndpoint:
+    Value: !GetAtt Data.Outputs.ProxyEndpoint
+  CacheHost:
+    Value: !GetAtt Data.Outputs.CachePrimaryEndpoint
+  DatabaseSecretArn:
+    Description: Full ARN, for reading the credentials by hand
+    Value: !GetAtt Data.Outputs.DatabaseSecretArn
+  RedisSecretArn:
+    Value: !GetAtt Data.Outputs.RedisSecretArn
   RepositoryUri:
     Description: Image URI the application workflow pushes to
     Value: !GetAtt Registry.Outputs.RepositoryUri
-  EcrRepositoryName:
-    Description: Value for ECR_REPOSITORY in the application repository
-    Value: !GetAtt Registry.Outputs.RepositoryName
-
-  DatabaseUrl:
-    Description: Value for DB_URL in the application repository - the proxy, not the instance
-    Value: !GetAtt Data.Outputs.DatabaseUrl
-  DatabaseSecretArn:
-    Description: Value for DB_SECRET_ARN in the application repository
-    Value: !GetAtt Data.Outputs.DatabaseSecretArn
-  RedisSecretArn:
-    Description: Value for REDIS_SECRET_ARN in the application repository
-    Value: !GetAtt Data.Outputs.RedisSecretArn
-  CacheHost:
-    Description: Value for REDIS_HOST in the application repository
-    Value: !GetAtt Data.Outputs.CachePrimaryEndpoint
-  CachePort:
-    Description: Value for REDIS_PORT in the application repository
-    Value: !GetAtt Data.Outputs.CachePort
-  CacheTls:
-    Description: Value for REDIS_SSL in the application repository
-    Value: !GetAtt Data.Outputs.CacheTransitEncryption
-
+  VpcId:
+    Value: !GetAtt Network.Outputs.VpcId
+  ArtifactBucketName:
+    Condition: HasImage
+    Description: Pipeline artifact store
+    Value: !GetAtt Delivery.Outputs.ArtifactBucketName
   PipelineName:
     Condition: HasImage
     Value: !GetAtt Delivery.Outputs.PipelineName
@@ -331,10 +357,3 @@ Outputs:
   ServiceName:
     Condition: HasImage
     Value: !GetAtt Platform.Outputs.ServiceName
-  VpcId:
-    Value: !GetAtt Network.Outputs.VpcId
-  DatabaseEndpoint:
-    Description: Instance endpoint - reachable only from the proxy, listed for diagnostics
-    Value: !GetAtt Data.Outputs.DatabaseEndpoint
-  ProxyEndpoint:
-    Value: !GetAtt Data.Outputs.ProxyEndpoint

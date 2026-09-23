@@ -2,9 +2,12 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   To-Do ECS - bootstrap.
   The S3 bucket that packaged nested templates are uploaded to, the account's
-  GitHub OIDC provider, and the role this infrastructure repository's workflow
-  assumes to run "aws cloudformation package". Deployed once, before the root
-  stack, because packaging needs a bucket to package into.
+  GitHub OIDC provider, the role this infrastructure repository's workflow
+  assumes to run "aws cloudformation package", and the CodeConnections
+  connection the delivery pipeline reads the application repository through.
+  Deployed once, before the root stack, because packaging needs a bucket to
+  package into - and because a connection has to be approved by hand, which is
+  worth doing once for the account rather than once per rebuild of the lab.
 
 Parameters:
   ProjectName:
@@ -48,6 +51,28 @@ Conditions:
   ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, 'true']
 
 Resources:
+  # CloudFormation can create this but cannot approve it. It is created
+  # PENDING, and stays useless until someone opens CodePipeline > Settings >
+  # Connections in the console and completes the GitHub handshake. Once
+  # AVAILABLE it stays that way, which is why it lives in the bootstrap stack
+  # rather than alongside the pipeline that uses it.
+  GitHubConnection:
+    Type: AWS::CodeStarConnections::Connection
+    Properties:
+      ConnectionName: !Sub '${ProjectName}-github'
+      ProviderType: GitHub
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+        - Key: lab
+          Value: advanced-ecs
+        - Key: owner
+          Value: leandre
+        - Key: managed-by
+          Value: cloudformation-gitsync
+        - Key: layer
+          Value: bootstrap
+
   GitHubOidcProvider:
     Type: AWS::IAM::OIDCProvider
     Condition: ShouldCreateOidcProvider
@@ -159,6 +184,10 @@ Resources:
                 Effect: Allow
                 Action: s3:ListBucket
                 Resource: !GetAtt TemplateBucket.Arn
+              - Sid: ReadTemplateBucketLocation
+                Effect: Allow
+                Action: s3:GetBucketLocation
+                Resource: !GetAtt TemplateBucket.Arn
       Tags:
         - Key: project
           Value: !Ref ProjectName
@@ -172,6 +201,13 @@ Resources:
           Value: bootstrap
 
 Outputs:
+  GitHubConnectionArn:
+    Description: >
+      Exported for the root stack. CloudFormation creates the connection in
+      PENDING; it does nothing until someone completes the GitHub handshake.
+    Value: !Ref GitHubConnection
+    Export:
+      Name: !Sub '${ProjectName}-github-connection-arn'
   TemplateBucketName:
     Description: Value for the TEMPLATE_BUCKET variable in the packaging workflow
     Value: !Ref TemplateBucket

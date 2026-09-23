@@ -172,6 +172,7 @@ Resources:
               - application-autoscaling:*
               - codedeploy:*
               - codepipeline:*
+              - codebuild:*
               - events:*
               - ecr:*
             Resource: '*'
@@ -188,6 +189,7 @@ Resources:
                   - ecs-tasks.amazonaws.com
                   - codedeploy.amazonaws.com
                   - codepipeline.amazonaws.com
+                  - codebuild.amazonaws.com
                   - events.amazonaws.com
                   - rds.amazonaws.com
           - Sid: ServiceLinkedRoles
@@ -232,6 +234,23 @@ Resources:
               - secretsmanager:UntagResource
               - secretsmanager:RotateSecret
             Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}-*'
+          - Sid: TaskConfigurationParameters
+            Effect: Allow
+            Action:
+              - ssm:PutParameter
+              - ssm:DeleteParameter
+              - ssm:DeleteParameters
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:AddTagsToResource
+              - ssm:RemoveTagsFromResource
+              - ssm:ListTagsForResource
+              - ssm:LabelParameterVersion
+            Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/*'
+          - Sid: DescribeParameters
+            Effect: Allow
+            Action: ssm:DescribeParameters
+            Resource: '*'
           - Sid: GenerateSecretMaterial
             Effect: Allow
             Action:
@@ -297,7 +316,31 @@ Resources:
             Action:
               - codeconnections:UseConnection
               - codestar-connections:UseConnection
+              # PassConnection is what lets this role create a pipeline whose
+              # source action names the connection. UseConnection alone is not
+              # enough, and the failure only shows up at CreateStack time.
+              - codeconnections:PassConnection
+              - codestar-connections:PassConnection
+              - codeconnections:GetConnection
+              - codestar-connections:GetConnection
             Resource: '*'
+          - Sid: ManageProjectConnection
+            Effect: Allow
+            Action:
+              - codeconnections:CreateConnection
+              - codeconnections:DeleteConnection
+              - codeconnections:GetConnection
+              - codeconnections:TagResource
+              - codeconnections:UntagResource
+              - codestar-connections:CreateConnection
+              - codestar-connections:DeleteConnection
+              - codestar-connections:GetConnection
+              - codestar-connections:TagResource
+              - codestar-connections:UntagResource
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: !Ref AWS::Region
           - Sid: PassExecutionRoleToCloudFormation
             Effect: Allow
             Action: iam:PassRole
