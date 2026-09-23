@@ -7,6 +7,10 @@ parameters:
   GitHubOwnerId: '78492995'
   RepositoryName: todo-ecs-app
   ImageTag: '625cb5c'
+  # Revision the ECS service should keep running. Empty on a first create;
+  # pin it to what CodeDeploy last registered once the service is live, or
+  # CloudFormation will try to move the service itself and ECS will refuse.
+  ServiceTaskDefinitionArn: ''
   TestListenerCidr: 127.0.0.1/32
 tags:
   project: todo-ecs
