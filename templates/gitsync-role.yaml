@@ -179,6 +179,19 @@ Resources:
             Condition:
               StringEquals:
                 aws:RequestedRegion: !Ref AWS::Region
+          - Sid: ProjectAlarms
+            Effect: Allow
+            Action:
+              - cloudwatch:PutMetricAlarm
+              - cloudwatch:DeleteAlarms
+              - cloudwatch:TagResource
+              - cloudwatch:UntagResource
+              - cloudwatch:ListTagsForResource
+            Resource: !Sub 'arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${ProjectName}-*'
+          - Sid: DescribeAlarms
+            Effect: Allow
+            Action: cloudwatch:DescribeAlarms
+            Resource: '*'
           - Sid: PassProjectRoles
             Effect: Allow
             Action: iam:PassRole
