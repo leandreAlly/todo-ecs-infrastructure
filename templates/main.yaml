@@ -81,6 +81,15 @@ Parameters:
     Type: String
     Default: todo-ecs-app
 
+  ConnectionArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws(-[a-z]+)*:(codestar-connections|codeconnections):[a-z0-9-]+:[0-9]{12}:connection/[a-f0-9-]+$'
+    Description: >
+      GitHub connection the pipeline reads the application repository through.
+      Empty imports the one the bootstrap stack exports. Setting it releases
+      that import, which is what lets the bootstrap stack change its export.
+
   ServiceTaskDefinitionArn:
     Type: String
     Default: ''
@@ -149,6 +158,7 @@ Parameters:
 
 Conditions:
   HasImage: !Not [!Equals [!Ref ImageTag, '']]
+  HasConnectionArn: !Not [!Equals [!Ref ConnectionArn, '']]
 Resources:
   Network:
     Type: AWS::CloudFormation::Stack
@@ -271,8 +281,10 @@ Resources:
         DatabaseSecretArn: !GetAtt Data.Outputs.DatabaseSecretArn
         RedisSecretArn: !GetAtt Data.Outputs.RedisSecretArn
         CacheTls: !GetAtt Data.Outputs.CacheTransitEncryption
-        ConnectionArn:
-          Fn::ImportValue: !Sub '${ProjectName}-github-connection-arn'
+        ConnectionArn: !If
+          - HasConnectionArn
+          - !Ref ConnectionArn
+          - Fn::ImportValue: !Sub '${ProjectName}-github-connection-arn'
         ApplicationRepositoryId: !Sub '${GitHubOwner}/${ApplicationRepo}'
       Tags:
         - Key: nested-stack
