@@ -1,4 +1,6 @@
 template-file-path: templates/bootstrap.yaml
+# Creates the todo-ecs-github connection PENDING. Approve it once in
+# CodePipeline > Settings > Connections before the root stack's pipeline runs.
 parameters:
   ProjectName: todo-ecs
   GitHubOwner: leandreAlly
