@@ -71,6 +71,14 @@ Parameters:
   RepositoryName:
     Type: String
     Default: todo-ecs-app
+  ConnectionArn:
+    Type: String
+    Default: ''
+    AllowedPattern: 
+      ^$|^arn:aws(-[a-z]+)*:(codestar-connections|codeconnections):[a-z0-9-]+:[0-9]{12}:connection/[a-f0-9-]+$
+    Description: "GitHub connection the pipeline reads the application repository\
+      \ through. Empty imports the one the bootstrap stack exports. Setting it releases\
+      \ that import, which is what lets the bootstrap stack change its export.\n"
   ServiceTaskDefinitionArn:
     Type: String
     Default: ''
@@ -137,6 +145,11 @@ Conditions:
     Fn::Not:
     - Fn::Equals:
       - Ref: ImageTag
+      - ''
+  HasConnectionArn:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: ConnectionArn
       - ''
 Resources:
   Network:
@@ -400,8 +413,11 @@ Resources:
           - Data
           - Outputs.CacheTransitEncryption
         ConnectionArn:
-          Fn::ImportValue:
-            Fn::Sub: ${ProjectName}-github-connection-arn
+          Fn::If:
+          - HasConnectionArn
+          - Ref: ConnectionArn
+          - Fn::ImportValue:
+              Fn::Sub: ${ProjectName}-github-connection-arn
         ApplicationRepositoryId:
           Fn::Sub: ${GitHubOwner}/${ApplicationRepo}
       Tags:
