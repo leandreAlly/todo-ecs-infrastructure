@@ -6,9 +6,9 @@ parameters:
   ApplicationRepo: todo-ecs-app
   GitHubOwnerId: '78492995'
   RepositoryName: todo-ecs-app
-  # Empty on a first create: the registry has to exist before an image can be
-  # pushed, so only the network, registry and data stacks are created.
-  ImageTag: ''
+  # Full commit SHA the application workflow pushed. Empty on a first create,
+  # when the registry does not exist yet.
+  ImageTag: 'c55f0786cf2d15f57e1ae52fb0e14f431afe7fa4'
   # Revision the ECS service should keep running. Empty on a first create;
   # pin it to what CodeDeploy last registered once the service is live, or
   # CloudFormation will try to move the service itself and ECS will refuse.
