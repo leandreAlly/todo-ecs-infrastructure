@@ -1,11 +1,12 @@
 template-file-path: templates/bootstrap.yaml
-# Creates the todo-ecs-github connection PENDING. Approve it once in
-# CodePipeline > Settings > Connections before the root stack's pipeline runs.
 parameters:
   ProjectName: todo-ecs
   GitHubOwner: leandreAlly
   InfrastructureRepo: todo-ecs-infrastructure
   GitHubOwnerId: '78492995'
+  # lab-conn: approved GitHub connection shared with the sibling labs, also the
+  # one this repository's Git sync link uses. Empty creates a new connection.
+  ExistingConnectionArn: arn:aws:codeconnections:eu-north-1:842676015206:connection/e10051fb-c117-4f51-8512-e3f7364b371d
   CreateOidcProvider: 'false'
   TemplateRetentionDays: '30'
 tags:

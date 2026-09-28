@@ -132,12 +132,14 @@ URL per account and the sibling labs already created it).
    image exists to pull. The data tier takes 25–40 minutes because of the
    Multi-AZ instance.
 
-6. **Approve the GitHub connection.** The bootstrap stack created an
-   `AWS::CodeStarConnections::Connection` in `PENDING`; CloudFormation cannot
-   complete the handshake. Open CodePipeline → Settings → Connections, choose
+6. **Approve the GitHub connection, if one was created.** `deployment/bootstrap.yaml`
+   sets `ExistingConnectionArn` to an already approved connection, so nothing
+   is needed here. With it empty, the bootstrap stack creates an
+   `AWS::CodeStarConnections::Connection` in `PENDING` that CloudFormation
+   cannot complete: open CodePipeline → Settings → Connections, choose
    `todo-ecs-github`, click **Update pending connection** and authorise the
-   GitHub app. The bootstrap stack exports the ARN for the root stack; it is
-   not copied into the deployment file.
+   GitHub app. Either way the bootstrap stack exports the ARN for the root
+   stack.
 
 7. **Publish the Actions variables and secrets the application repository
    needs.**

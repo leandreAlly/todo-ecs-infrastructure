@@ -31,6 +31,14 @@ Parameters:
       immutable OIDC subject claim of the form
       repo:owner@ownerid/repo@repoid:ref:... instead of repo:owner/repo:ref:...
 
+  ExistingConnectionArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws(-[a-z]+)*:(codestar-connections|codeconnections):[a-z0-9-]+:[0-9]{12}:connection/[a-f0-9-]+$'
+    Description: >
+      An already approved GitHub connection to reuse. Leave empty to create a
+      new one, which then has to be approved once in the console.
+
   CreateOidcProvider:
     Type: String
     Default: 'true'
@@ -49,6 +57,7 @@ Parameters:
 
 Conditions:
   ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, 'true']
+  ShouldCreateConnection: !Equals [!Ref ExistingConnectionArn, '']
 
 Resources:
   # CloudFormation can create this but cannot approve it. It is created
@@ -58,6 +67,7 @@ Resources:
   # rather than alongside the pipeline that uses it.
   GitHubConnection:
     Type: AWS::CodeStarConnections::Connection
+    Condition: ShouldCreateConnection
     Properties:
       ConnectionName: !Sub '${ProjectName}-github'
       ProviderType: GitHub
@@ -203,9 +213,13 @@ Resources:
 Outputs:
   GitHubConnectionArn:
     Description: >
-      Exported for the root stack. CloudFormation creates the connection in
-      PENDING; it does nothing until someone completes the GitHub handshake.
-    Value: !Ref GitHubConnection
+      Exported for the root stack. Either the reused connection, or the one
+      created here in PENDING, which does nothing until someone completes the
+      GitHub handshake.
+    Value: !If
+      - ShouldCreateConnection
+      - !Ref GitHubConnection
+      - !Ref ExistingConnectionArn
     Export:
       Name: !Sub '${ProjectName}-github-connection-arn'
   TemplateBucketName:
