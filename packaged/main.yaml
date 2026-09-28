@@ -1,8 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: "To-Do ECS - root stack. Nests every module for this project. Child templates\
-  \ are referenced by local path here; \"aws cloudformation package\" rewrites each\
-  \ TemplateURL to a content-hashed S3 object, so a module only updates when its own\
-  \ template changes. Deploy this stack, never its children.\n"
+Description: "To-Do ECS - root stack. Nests every child stack for this project. Child\
+  \ templates are referenced by local path here; \"aws cloudformation package\" rewrites\
+  \ each TemplateURL to a content-hashed S3 object, so a nested stack only updates\
+  \ when its own template changes. Deploy this stack, never its children.\n"
 Parameters:
   ProjectName:
     Type: String
@@ -71,12 +71,19 @@ Parameters:
   RepositoryName:
     Type: String
     Default: todo-ecs-app
+  ServiceTaskDefinitionArn:
+    Type: String
+    Default: ''
+    Description: "Task definition revision the ECS service should keep running. Empty\
+      \ on the first create; pin it to the revision CodeDeploy last registered so\
+      \ that later template edits cannot try to move the service themselves - ECS\
+      \ rejects that on a CODE_DEPLOY service.\n"
   ImageTag:
     Type: String
     Default: ''
     Description: "Image tag to run. Leave empty on the first deploy - the platform\
-      \ module is only created once an image exists in the registry, because an ECS\
-      \ service cannot start without a real image to pull. The data module is deliberately\
+      \ stack is only created once an image exists in the registry, because an ECS\
+      \ service cannot start without a real image to pull. The data stack is deliberately\
       \ outside this condition so the database and cache are already warm by the time\
       \ the first image lands.\n"
   DbName:
@@ -136,7 +143,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/62e4b32a1ff270c3f15f4b4c346f5d78.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/6c65635e53c46edaa01357b07a155da5.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -171,13 +178,13 @@ Resources:
         S3PrefixListId:
           Ref: S3PrefixListId
       Tags:
-      - Key: module
+      - Key: nested-stack
         Value: network
   Registry:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/2a5e433c49592fef233e875590706cd8.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/d8ba9dee546a4403c11179c3d7b431b4.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -190,13 +197,13 @@ Resources:
         GitHubRepo:
           Ref: ApplicationRepo
       Tags:
-      - Key: module
+      - Key: nested-stack
         Value: registry
   Data:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/a391862923c733fc61a6c6e9774baa4f.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/b749805b8e1911443ae705908b55dc92.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -243,14 +250,14 @@ Resources:
         CachePort:
           Ref: CachePort
       Tags:
-      - Key: module
+      - Key: nested-stack
         Value: data
   Platform:
     Type: AWS::CloudFormation::Stack
     Condition: HasImage
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/b131fedd6392598128b17290cf950fe3.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/849d1f03c35df4a62ddd37588e4b3933.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -280,10 +287,6 @@ Resources:
           Ref: ContainerPort
         TestListenerPort:
           Ref: TestListenerPort
-        DatabaseUrl:
-          Fn::GetAtt:
-          - Data
-          - Outputs.DatabaseUrl
         DatabaseSecretArn:
           Fn::GetAtt:
           - Data
@@ -292,18 +295,12 @@ Resources:
           Fn::GetAtt:
           - Data
           - Outputs.RedisSecretArn
-        CacheHost:
-          Fn::GetAtt:
-          - Data
-          - Outputs.CachePrimaryEndpoint
-        CachePort:
-          Fn::GetAtt:
-          - Data
-          - Outputs.CachePort
         CacheTls:
           Fn::GetAtt:
           - Data
           - Outputs.CacheTransitEncryption
+        ServiceTaskDefinitionArn:
+          Ref: ServiceTaskDefinitionArn
         TaskCpu:
           Ref: TaskCpu
         TaskMemory:
@@ -315,14 +312,14 @@ Resources:
         CpuTargetUtilization:
           Ref: CpuTargetUtilization
       Tags:
-      - Key: module
+      - Key: nested-stack
         Value: platform
   Delivery:
     Type: AWS::CloudFormation::Stack
     Condition: HasImage
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/modules/430c2cec8355c7d55eb93152a1bdbb6a.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/00e8bff0e87e7c00f320c9c865929ac9.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -358,12 +355,57 @@ Resources:
           Fn::GetAtt:
           - Platform
           - Outputs.Target5xxAlarmName
-        ApplicationRoleArn:
+        TaskFamily:
+          Ref: ProjectName
+        TaskExecutionRoleArn:
           Fn::GetAtt:
-          - Registry
-          - Outputs.GitHubActionsRoleArn
+          - Platform
+          - Outputs.TaskExecutionRoleArn
+        TaskRoleArn:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.TaskRoleArn
+        ContainerPort:
+          Ref: ContainerPort
+        TaskCpu:
+          Ref: TaskCpu
+        TaskMemory:
+          Ref: TaskMemory
+        LogGroupName:
+          Fn::GetAtt:
+          - Platform
+          - Outputs.LogGroupName
+        DatabaseUrlParameterArn:
+          Fn::GetAtt:
+          - Data
+          - Outputs.DatabaseUrlParameterArn
+        CacheHostParameterArn:
+          Fn::GetAtt:
+          - Data
+          - Outputs.CacheHostParameterArn
+        CachePortParameterArn:
+          Fn::GetAtt:
+          - Data
+          - Outputs.CachePortParameterArn
+        DatabaseSecretArn:
+          Fn::GetAtt:
+          - Data
+          - Outputs.DatabaseSecretArn
+        RedisSecretArn:
+          Fn::GetAtt:
+          - Data
+          - Outputs.RedisSecretArn
+        CacheTls:
+          Fn::GetAtt:
+          - Data
+          - Outputs.CacheTransitEncryption
+        ConnectionArn:
+          Fn::ImportValue:
+            Fn::Sub: ${ProjectName}-github-connection-arn
+        ApplicationRepositoryId:
+          Fn::Sub: ${GitHubOwner}/${ApplicationRepo}
       Tags:
-      - Key: module
+      - Key: nested-stack
         Value: delivery
 Outputs:
   ApplicationUrl:
@@ -380,102 +422,114 @@ Outputs:
       Fn::GetAtt:
       - Platform
       - Outputs.TestListenerUrl
-  ArtifactBucketName:
-    Condition: HasImage
-    Description: Value for ARTIFACT_BUCKET in the application repository
+  ApplicationRoleArn:
+    Description: Value for the AWS_ECR_ROLE_ARN secret in the application 
+      repository
     Value:
       Fn::GetAtt:
-      - Delivery
-      - Outputs.ArtifactBucketName
+      - Registry
+      - Outputs.GitHubActionsRoleArn
+  EcrRepositoryName:
+    Description: Value for the ECR_REPOSITORY variable in the application 
+      repository
+    Value:
+      Fn::GetAtt:
+      - Registry
+      - Outputs.RepositoryName
   TaskFamily:
-    Condition: HasImage
-    Description: Value for TASK_FAMILY in the application repository
+    Description: family in taskdef.json
     Value:
       Ref: ProjectName
   TaskExecutionRoleArn:
     Condition: HasImage
-    Description: Value for TASK_EXEC_ROLE_ARN in the application repository
+    Description: executionRoleArn in taskdef.json
     Value:
       Fn::GetAtt:
       - Platform
       - Outputs.TaskExecutionRoleArn
   TaskRoleArn:
     Condition: HasImage
-    Description: Value for TASK_ROLE_ARN in the application repository
+    Description: taskRoleArn in taskdef.json
     Value:
       Fn::GetAtt:
       - Platform
       - Outputs.TaskRoleArn
   LogGroupName:
     Condition: HasImage
-    Description: Value for LOG_GROUP in the application repository
+    Description: awslogs-group in taskdef.json
     Value:
       Fn::GetAtt:
       - Platform
       - Outputs.LogGroupName
-  TaskCpuValue:
-    Description: Value for TASK_CPU in the application repository
-    Value:
-      Ref: TaskCpu
-  TaskMemoryValue:
-    Description: Value for TASK_MEMORY in the application repository
-    Value:
-      Ref: TaskMemory
-  ApplicationRoleArn:
-    Description: Value for AWS_ECR_ROLE_ARN in the application repository
+  DatabaseUrlParameterArn:
+    Description: valueFrom for SPRING_DATASOURCE_URL in taskdef.json
     Value:
       Fn::GetAtt:
-      - Registry
-      - Outputs.GitHubActionsRoleArn
+      - Data
+      - Outputs.DatabaseUrlParameterArn
+  CacheHostParameterArn:
+    Description: valueFrom for SPRING_DATA_REDIS_HOST in taskdef.json
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.CacheHostParameterArn
+  CachePortParameterArn:
+    Description: valueFrom for SPRING_DATA_REDIS_PORT in taskdef.json
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.CachePortParameterArn
+  DatabaseUrl:
+    Description: Resolved JDBC URL - the proxy, not the instance
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.DatabaseUrl
+  DatabaseEndpoint:
+    Description: Instance endpoint - reachable only from the proxy
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.DatabaseEndpoint
+  ProxyEndpoint:
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.ProxyEndpoint
+  CacheHost:
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.CachePrimaryEndpoint
+  DatabaseSecretArn:
+    Description: Full ARN, for reading the credentials by hand
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.DatabaseSecretArn
+  RedisSecretArn:
+    Value:
+      Fn::GetAtt:
+      - Data
+      - Outputs.RedisSecretArn
   RepositoryUri:
     Description: Image URI the application workflow pushes to
     Value:
       Fn::GetAtt:
       - Registry
       - Outputs.RepositoryUri
-  EcrRepositoryName:
-    Description: Value for ECR_REPOSITORY in the application repository
+  VpcId:
     Value:
       Fn::GetAtt:
-      - Registry
-      - Outputs.RepositoryName
-  DatabaseUrl:
-    Description: Value for DB_URL in the application repository - the proxy, not
-      the instance
+      - Network
+      - Outputs.VpcId
+  ArtifactBucketName:
+    Condition: HasImage
+    Description: Pipeline artifact store
     Value:
       Fn::GetAtt:
-      - Data
-      - Outputs.DatabaseUrl
-  DatabaseSecretArn:
-    Description: Value for DB_SECRET_ARN in the application repository
-    Value:
-      Fn::GetAtt:
-      - Data
-      - Outputs.DatabaseSecretArn
-  RedisSecretArn:
-    Description: Value for REDIS_SECRET_ARN in the application repository
-    Value:
-      Fn::GetAtt:
-      - Data
-      - Outputs.RedisSecretArn
-  CacheHost:
-    Description: Value for REDIS_HOST in the application repository
-    Value:
-      Fn::GetAtt:
-      - Data
-      - Outputs.CachePrimaryEndpoint
-  CachePort:
-    Description: Value for REDIS_PORT in the application repository
-    Value:
-      Fn::GetAtt:
-      - Data
-      - Outputs.CachePort
-  CacheTls:
-    Description: Value for REDIS_SSL in the application repository
-    Value:
-      Fn::GetAtt:
-      - Data
-      - Outputs.CacheTransitEncryption
+      - Delivery
+      - Outputs.ArtifactBucketName
   PipelineName:
     Condition: HasImage
     Value:
@@ -494,20 +548,3 @@ Outputs:
       Fn::GetAtt:
       - Platform
       - Outputs.ServiceName
-  VpcId:
-    Value:
-      Fn::GetAtt:
-      - Network
-      - Outputs.VpcId
-  DatabaseEndpoint:
-    Description: Instance endpoint - reachable only from the proxy, listed for 
-      diagnostics
-    Value:
-      Fn::GetAtt:
-      - Data
-      - Outputs.DatabaseEndpoint
-  ProxyEndpoint:
-    Value:
-      Fn::GetAtt:
-      - Data
-      - Outputs.ProxyEndpoint
