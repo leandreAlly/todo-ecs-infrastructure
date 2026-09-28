@@ -6,6 +6,8 @@ parameters:
   GitHubOwnerId: '78492995'
   # lab-conn: approved GitHub connection shared with the sibling labs, also the
   # one this repository's Git sync link uses. Empty creates a new connection.
+  # Changing this changes the exported ARN, which CloudFormation refuses while
+  # the root stack imports it - set ConnectionArn in deployment/main.yaml first.
   ExistingConnectionArn: arn:aws:codeconnections:eu-north-1:842676015206:connection/e10051fb-c117-4f51-8512-e3f7364b371d
   CreateOidcProvider: 'false'
   TemplateRetentionDays: '30'
