@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   To-Do ECS - container registry and the CI identity that writes to it.
-  A private ECR repository with immutable commit tags and digest-pinned
+  A private ECR repository whose only tag is "latest", with digest-pinned
   deployment artifacts, plus the IAM role the
   application repository's GitHub Actions workflow assumes through OIDC.
   Deployed before the platform stack because an ECS service cannot start
@@ -39,20 +39,20 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: !Ref RepositoryName
-      ImageTagMutability: IMMUTABLE_WITH_EXCLUSION
-      ImageTagMutabilityExclusionFilters:
-        - ImageTagMutabilityExclusionFilterType: WILDCARD
-          ImageTagMutabilityExclusionFilterValue: latest
+      # The only tag is "latest", and every push moves it to the new image.
+      # The previous image keeps its digest but loses the tag.
+      ImageTagMutability: MUTABLE
       EmptyOnDelete: true
       ImageScanningConfiguration:
         ScanOnPush: true
       LifecyclePolicy:
         # One policy, one rule. A repository has exactly one lifecycle policy,
-        # and every image in it - the mutable "latest" tag, immutable commit
-        # tags and the untagged layers left behind when "latest" moves -
-        # is expired by this single count rule. The twenty most recent images
-        # cover far more than the deployment history a rollback ever reaches
-        # back through.
+        # and every image in it - the one tagged "latest" and the untagged
+        # images it left behind as it moved - is expired by this single count
+        # rule. Untagged images are kept rather than expired straight away:
+        # each deployed task definition pins its image by digest, so a
+        # CodeDeploy rollback needs the previous image to still exist. The
+        # twenty most recent cover far more history than a rollback reaches.
         LifecyclePolicyText: |
           {
             "rules": [

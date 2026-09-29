@@ -96,8 +96,8 @@ Parameters:
     Type: String
     Default: latest
     Description: >
-      Mutable convenience tag excluded from deployment triggers. Immutable
-      commit tags start the pipeline and are pinned by digest from the event.
+      The only tag the application workflow publishes. A push that moves it
+      starts the pipeline, which deploys the pushed image by digest.
 
   TerminationWaitMinutes:
     Type: Number
@@ -691,8 +691,7 @@ Resources:
           result:
             - SUCCESS
           image-tag:
-            - anything-but:
-                - !Ref MutableImageTag
+            - !Ref MutableImageTag
           repository-name:
             - !Ref EcrRepositoryName
       Targets:
@@ -700,11 +699,13 @@ Resources:
           Arn: !Sub 'arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}'
           RoleArn: !GetAtt EventBridgeRole.Arn
           InputTransformer:
+            # The digest pins the exact image that was pushed, so a later push
+            # cannot swap the image under a running release. The event carries
+            # no commit, so the deployment description is read from the branch.
             InputPathsMap:
-              commitId: $.detail.image-tag
               imageDigest: $.detail.image-digest
             InputTemplate: >-
-              {"sourceRevisions":[{"actionName":"DeploymentConfig","revisionType":"COMMIT_ID","revisionValue":"<commitId>"},{"actionName":"Image","revisionType":"IMAGE_DIGEST","revisionValue":"<imageDigest>"}]}
+              {"sourceRevisions":[{"actionName":"Image","revisionType":"IMAGE_DIGEST","revisionValue":"<imageDigest>"}]}
       Tags:
         - Key: project
           Value: !Ref ProjectName

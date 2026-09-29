@@ -155,13 +155,14 @@ URL per account and the sibling labs already created it).
    ECR. It does nothing else — the deployment description is committed, so
    there is no bundle to publish and no ordering to get wrong.
 
-9. **Set `ImageTag`** in `deployment/main.yaml` to the full commit SHA the
-   application workflow pushed, and commit. Git sync creates the platform and
-   delivery nested stacks.
+9. **Set `ImageTag`** in `deployment/main.yaml` to `latest`, the only tag the
+   application workflow publishes, and commit. Git sync creates the platform
+   and delivery nested stacks.
 
 10. **Pin `ServiceTaskDefinitionArn`.** Once the service is running, obtain its
-    active revision with `aws ecs describe-services --cluster todo-ecs
-    --services todo-ecs --query 'services[0].taskDefinition' --output text` and
+    active revision with `aws ecs describe-services --cluster <ClusterName>
+    --services <ServiceName> --query 'services[0].taskDefinition' --output text`
+    (both names are root stack outputs; CloudFormation generates them) and
     commit that ARN as the parameter value. Repeat this after CodeDeploy moves
     the service to a later revision. Until it is pinned, a template edit that
     touches the task definition makes CloudFormation try to move the service,
@@ -169,20 +170,24 @@ URL per account and the sibling labs already created it).
 
 ## How a deployment flows
 
-A push to `todo-ecs-app` builds an image, pushes it under the full commit SHA,
-then moves `latest`. Commit tags are immutable; only `latest` is mutable.
+A push to `todo-ecs-app` builds an image and pushes it as `latest`, the only
+tag in the repository. ECR moves the tag to the new image, and the previous
+image stays behind untagged, still addressable by digest. The commit is baked
+into the image as a build argument, so the UI still shows which one is live.
 
-The EventBridge rule matches the immutable push and starts CodePipeline with
-the event's image digest and tag as source revision overrides. The tag selects
-the exact Git commit through CodeConnections, while the digest selects the
-exact ECR image. A CodeBuild stage renders `taskdef.json` and `appspec.yaml`
+The EventBridge rule matches a push of `latest` and starts CodePipeline with
+the event's image digest as a source revision override, so the release deploys
+the exact image that was pushed. `taskdef.json` and `appspec.yaml` are read
+from the head of the branch. A CodeBuild stage renders `taskdef.json` and `appspec.yaml`
 with CloudFormation-provided role ARNs, parameter ARNs, full secret ARNs,
 logging settings and task sizing. CodePipeline replaces `<IMAGE1_NAME>` with
 the digest URI and CodeDeploy performs the blue/green deployment.
 
 The pipeline uses queued execution, so releases cannot overtake one another.
-The source overrides ensure a newer branch head or a later `latest` update
-cannot change the revision already being deployed.
+The digest override ensures a later `latest` push cannot change the image
+already being deployed. Untagged images are kept by the lifecycle rule rather
+than expired at once, because a CodeDeploy rollback redeploys the previous task
+definition, which names its image by digest.
 
 `DetectChanges` is `false` on the repository source, so the connection does not
 register a webhook of its own. The EventBridge rule is meant to be the only

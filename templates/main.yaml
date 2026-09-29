@@ -103,7 +103,8 @@ Parameters:
     Type: String
     Default: ''
     Description: >
-      Image tag to run. Leave empty on the first deploy - the platform stack
+      Image tag to run - "latest", the only tag the application workflow
+      publishes. Leave empty on the first deploy - the platform stack
       is only created once an image exists in the registry, because an ECS
       service cannot start without a real image to pull. The data stack is
       deliberately outside this condition so the database and cache are already
