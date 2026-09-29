@@ -89,11 +89,12 @@ Parameters:
   ImageTag:
     Type: String
     Default: ''
-    Description: "Image tag to run. Leave empty on the first deploy - the platform\
-      \ stack is only created once an image exists in the registry, because an ECS\
-      \ service cannot start without a real image to pull. The data stack is deliberately\
-      \ outside this condition so the database and cache are already warm by the time\
-      \ the first image lands.\n"
+    Description: "Image tag to run - \"latest\", the only tag the application workflow\
+      \ publishes. Leave empty on the first deploy - the platform stack is only created\
+      \ once an image exists in the registry, because an ECS service cannot start\
+      \ without a real image to pull. The data stack is deliberately outside this\
+      \ condition so the database and cache are already warm by the time the first\
+      \ image lands.\n"
   DbName:
     Type: String
     Default: todo
@@ -197,7 +198,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/d8ba9dee546a4403c11179c3d7b431b4.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/f030cea8f166d9c550c850355b593d19.template
       Parameters:
         ProjectName:
           Ref: ProjectName
@@ -332,7 +333,7 @@ Resources:
     Condition: HasImage
     Properties:
       TemplateURL: 
-        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/00e8bff0e87e7c00f320c9c865929ac9.template
+        https://s3.eu-north-1.amazonaws.com/todo-ecs-templates-842676015206-eu-north-1/nested-stacks/e0b7a9e60fca038a10c8723ef1068029.template
       Parameters:
         ProjectName:
           Ref: ProjectName
