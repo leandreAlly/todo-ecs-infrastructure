@@ -163,10 +163,12 @@ URL per account and the sibling labs already created it).
     active revision with `aws ecs describe-services --cluster <ClusterName>
     --services <ServiceName> --query 'services[0].taskDefinition' --output text`
     (both names are root stack outputs; CloudFormation generates them) and
-    commit that ARN as the parameter value. Repeat this after CodeDeploy moves
-    the service to a later revision. Until it is pinned, a template edit that
+    commit that ARN as the parameter value. Pin it once and leave it: the value
+    only has to stay constant. Until it is pinned, a template edit that
     touches the task definition makes CloudFormation try to move the service,
-    and ECS rejects that on a `CODE_DEPLOY` service.
+    and ECS rejects that on a `CODE_DEPLOY` service. Changing the pinned value
+    later - even to the revision CodeDeploy is already running - is exactly
+    such an edit and fails the same way, so do not update it after a release.
 
 ## How a deployment flows
 
