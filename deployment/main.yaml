@@ -8,7 +8,7 @@ parameters:
   RepositoryName: todo-ecs-app
   # The only tag the application workflow publishes. Empty on a first create,
   # when the registry does not exist yet.
-  ImageTag: ''
+  ImageTag: latest
   # lab-conn, set directly so the root stack stops importing the bootstrap
   # export while that export moves off the PENDING todo-ecs-github connection.
   ConnectionArn: arn:aws:codeconnections:eu-north-1:842676015206:connection/e10051fb-c117-4f51-8512-e3f7364b371d
