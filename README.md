@@ -159,16 +159,25 @@ URL per account and the sibling labs already created it).
    application workflow publishes, and commit. Git sync creates the platform
    and delivery nested stacks.
 
-10. **Pin `ServiceTaskDefinitionArn`.** Once the service is running, obtain its
-    active revision with `aws ecs describe-services --cluster <ClusterName>
-    --services <ServiceName> --query 'services[0].taskDefinition' --output text`
-    (both names are root stack outputs; CloudFormation generates them) and
-    commit that ARN as the parameter value. Pin it once and leave it: the value
-    only has to stay constant. Until it is pinned, a template edit that
-    touches the task definition makes CloudFormation try to move the service,
-    and ECS rejects that on a `CODE_DEPLOY` service. Changing the pinned value
-    later - even to the revision CodeDeploy is already running - is exactly
-    such an edit and fails the same way, so do not update it after a release.
+10. **Pin `ServiceTaskDefinitionArn`.** Commit the ARN of the revision
+    **CloudFormation registered** - the platform nested stack's
+    `TaskDefinition` resource - as the parameter value:
+
+    ```sh
+    platform=$(aws cloudformation describe-stack-resource --stack-name todo-ecs \
+      --logical-resource-id Platform --query 'StackResourceDetail.PhysicalResourceId' --output text)
+    aws cloudformation describe-stack-resource --stack-name "$platform" \
+      --logical-resource-id TaskDefinition \
+      --query 'StackResourceDetail.PhysicalResourceId' --output text
+    ```
+
+    To CloudFormation that is the value the service already has, so the update
+    leaves the service alone. Do not use the revision `describe-services`
+    reports: once CodeDeploy has released, that is a later revision, and
+    switching to it is a task definition change ECS rejects on a
+    `CODE_DEPLOY` service. Pin once and leave it - the value only has to stay
+    constant. Until it is pinned, any template edit that touches the task
+    definition fails the same way.
 
 ## How a deployment flows
 
